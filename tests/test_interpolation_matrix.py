@@ -1,3 +1,5 @@
+import itertools
+
 from mpi4py import MPI
 
 import basix.ufl
@@ -6,23 +8,39 @@ import numpy as np
 import pytest
 import ufl
 
-from fenicsx_ii import NaiveTrace, create_interpolation_matrix
+from fenicsx_ii import Circle, NaiveTrace, create_interpolation_matrix
+
+ghost_modes: list[dolfinx.mesh.GhostMode] = [
+    dolfinx.mesh.GhostMode.none,
+    dolfinx.mesh.GhostMode.shared_facet,
+]
+three_dimensional_cell_types: list[dolfinx.mesh.CellType] = [
+    dolfinx.mesh.CellType.tetrahedron,
+    dolfinx.mesh.CellType.hexahedron,
+]
+
+one_dim_combinations = list(itertools.product(ghost_modes))
+three_dim_combinations = list(
+    itertools.product(three_dimensional_cell_types, ghost_modes)
+)
 
 
-def create_line(ghost_mode: dolfinx.mesh.GhostMode) -> dolfinx.mesh.Mesh:
+def create_line(
+    ghost_mode: dolfinx.mesh.GhostMode, curved: bool = True
+) -> dolfinx.mesh.Mesh:
     if MPI.COMM_WORLD.rank == 0:
-        M = 125
+        M = 63
         nodes = np.zeros((M, 3), dtype=np.float64)
 
-        nodes[:, 0] = np.linspace(0.23, 0.7, nodes.shape[0])
-        nodes[:, 1] = np.linspace(0.32, 0.6, nodes.shape[0])[::-1]
-        nodes[:, 2] = np.linspace(0.15, 0.7, nodes.shape[0])[::-1]
-
-        # Test for curved line
-        theta = np.linspace(0, 3 * 2 * np.pi, nodes.shape[0])
-        nodes[:, 0] = 0.5 + 0.2 * np.cos(theta)
-        nodes[:, 1] = 0.5 + 0.2 * np.sin(theta)
-        nodes[:, 2] = np.linspace(0.2, 0.8, nodes.shape[0])[::-1]
+        if curved:
+            theta = np.linspace(0, 3 * 2 * np.pi, nodes.shape[0])
+            nodes[:, 0] = 0.5 + 0.2 * np.cos(theta)
+            nodes[:, 1] = 0.5 + 0.2 * np.sin(theta)
+            nodes[:, 2] = np.linspace(0.2, 0.8, nodes.shape[0])[::-1]
+        else:
+            nodes[:, 0] = np.zeros(nodes.shape[0])
+            nodes[:, 1] = np.zeros(nodes.shape[0])
+            nodes[:, 2] = np.linspace(0.15, 0.7, nodes.shape[0])[::-1]
 
         connectivity = np.repeat(np.arange(nodes.shape[0]), 2)[1:-1].reshape(
             nodes.shape[0] - 1, 2
@@ -47,21 +65,102 @@ def create_line(ghost_mode: dolfinx.mesh.GhostMode) -> dolfinx.mesh.Mesh:
     return line_mesh
 
 
+@pytest.fixture(params=one_dim_combinations, scope="module")
+def line(request):
+    (ghost_mode,) = request.param
+    mesh = create_line(ghost_mode, curved=False)
+    return mesh
+
+
+@pytest.fixture(params=one_dim_combinations, scope="module")
+def curved_line(request):
+    (ghost_mode,) = request.param
+    mesh = create_line(ghost_mode, curved=True)
+    return mesh
+
+
+@pytest.fixture(params=three_dim_combinations, scope="module")
+def unit_cube(request):
+    cell_type, ghost_mode = request.param
+    mesh = dolfinx.mesh.create_unit_cube(
+        MPI.COMM_WORLD, 5, 7, 3, cell_type=cell_type, ghost_mode=ghost_mode
+    )
+    return mesh
+
+
+@pytest.fixture(params=three_dim_combinations, scope="module")
+def box(request):
+    cell_type, ghost_mode = request.param
+    N = 15
+    mesh = dolfinx.mesh.create_box(
+        MPI.COMM_WORLD,
+        [[-1, -1, -1], [1, 1, 1]],
+        [N, N, N],
+        cell_type=cell_type,
+        ghost_mode=ghost_mode,
+    )
+    mesh.name = "Box"
+    return mesh
+
+
 @pytest.mark.parametrize("use_petsc", [True, False])
 @pytest.mark.parametrize("family", ["DG", "Quadrature"])
 @pytest.mark.parametrize("degree", [1, 2, 4])
-@pytest.mark.parametrize(
-    "ghost_mode", [dolfinx.mesh.GhostMode.none, dolfinx.mesh.GhostMode.shared_facet]
-)
-def test_naive_trace(use_petsc, family, degree, ghost_mode):
-    N = 17
-    cube = dolfinx.mesh.create_unit_cube(MPI.COMM_WORLD, N, N, N, ghost_mode=ghost_mode)
-    cube.name = "Cube"
-    line = create_line(ghost_mode)
-    assert line.comm.size == cube.comm.size
-    assert line.comm.rank == cube.comm.rank
+def test_naive_trace(use_petsc, family, degree, curved_line, unit_cube):
+    V = dolfinx.fem.functionspace(unit_cube, ("Lagrange", 1))
 
-    V = dolfinx.fem.functionspace(cube, ("Lagrange", 1))
+    if family == "DG":
+        el = ("DG", degree)
+    elif family == "Quadrature":
+        el = basix.ufl.quadrature_element(
+            curved_line.basix_cell(), value_shape=(), degree=degree
+        )
+    else:
+        raise NotImplementedError(f"Test for {family=} not implemented")
+    K_hat = dolfinx.fem.functionspace(curved_line, el)
+
+    def f(x):
+        return x[0] - x[1] + 2 * x[2]
+
+    # Interpolate reference solution onto `u`
+    uh = dolfinx.fem.Function(V)
+    uh.interpolate(f)
+
+    restriction = NaiveTrace(curved_line)
+    bh = dolfinx.fem.Function(K_hat)
+    A = create_interpolation_matrix(V, K_hat, restriction, use_petsc=use_petsc)
+
+    if use_petsc:
+        A.mult(uh.x.petsc_vec, bh.x.petsc_vec)
+    else:
+        # NOTE: Implicit assumption in DOLFINx that the dofs map of input vector
+        # is the same as the once used within the matrix
+
+        # Transfer from standard function to compatible vector
+        num_owned_dofs = A.index_map(1).size_local * A.block_size[1]
+        u_vec = dolfinx.la.vector(A.index_map(1), A.block_size[1])
+        u_vec.array[:num_owned_dofs] = uh.x.array[:num_owned_dofs]
+        u_vec.scatter_forward()
+        b_vec = dolfinx.la.vector(A.index_map(0), A.block_size[0])
+        A.mult(u_vec, b_vec)
+        b_vec.scatter_forward()
+        # Transfer back to DOLFINx vector
+        num_owned_dofs_b = A.index_map(0).size_local * A.block_size[0]
+        bh.x.array[:num_owned_dofs_b] = b_vec.array[:num_owned_dofs_b]
+    bh.x.scatter_forward()
+
+    bh_ref = dolfinx.fem.Function(K_hat)
+    bh_ref.interpolate(f)
+    np.testing.assert_allclose(bh.x.array, bh_ref.x.array)
+
+
+@pytest.mark.parametrize("use_petsc", [True, False])
+@pytest.mark.parametrize("family", ["DG", "Quadrature"])
+@pytest.mark.parametrize("degree", [2, 4])
+@pytest.mark.parametrize("case", [1, 2, 3, 4])
+@pytest.mark.parametrize("radius", [0.53, 0.12, 0.02])
+def test_circle_trace(use_petsc, family, degree, line, box, radius, case):
+    V = dolfinx.fem.functionspace(box, ("Lagrange", 3))
 
     if family == "DG":
         el = ("DG", degree)
@@ -74,13 +173,33 @@ def test_naive_trace(use_petsc, family, degree, ghost_mode):
     K_hat = dolfinx.fem.functionspace(line, el)
 
     def f(x):
-        return x[0] - x[1] + 2 * x[2]
+        if case == 1:
+            return x[2]
+        elif case == 2:
+            return x[1] * x[1] + x[0] * x[0]
+        elif case == 3:
+            return x[2] * (x[0] * x[0] + x[1] * x[1])
+        elif case == 4:
+            return np.sin(0.5 * np.pi * x[2])
+        else:
+            raise ValueError(f"{case=} is not supported")
+
+    def Pi_f(x):
+        if case == 1:
+            return x[2]
+        elif case == 2:
+            return np.full_like(x[0], radius**2)
+        elif case == 3:
+            return x[2] * radius**2
+        elif case == 4:
+            return np.sin(0.5 * np.pi * x[2])
+        else:
+            raise ValueError(f"{case=} is not supported")
 
     # Interpolate reference solution onto `u`
     uh = dolfinx.fem.Function(V)
     uh.interpolate(f)
-
-    restriction = NaiveTrace(line)
+    restriction = Circle(line, radius, degree=10)
 
     bh = dolfinx.fem.Function(K_hat)
     use_petsc = False
@@ -106,5 +225,6 @@ def test_naive_trace(use_petsc, family, degree, ghost_mode):
     bh.x.scatter_forward()
 
     bh_ref = dolfinx.fem.Function(K_hat)
-    bh_ref.interpolate(f)
-    np.testing.assert_allclose(bh.x.array, bh_ref.x.array)
+    bh_ref.interpolate(Pi_f)
+
+    np.testing.assert_allclose(bh.x.array, bh_ref.x.array, atol=1e-6)

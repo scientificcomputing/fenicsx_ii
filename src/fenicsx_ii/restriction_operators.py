@@ -57,17 +57,20 @@ class Circle:
         | typing.Callable[[npt.NDArray[np.floating]], npt.NDArray[np.floating]],
         degree: int = 15,
     ):
-        if degree < 0:
-            raise ValueError("Degree must be non-negative")
+        if degree < 3:
+            raise ValueError(
+                "Degree must be bigger than 3 for a sensible approximation"
+            )
         if mesh.topology.dim != 1:
             raise ValueError("Circle quadrature can only be used on 1D meshes")
         if mesh.geometry.cmap.degree > 1:
             raise NotImplementedError("Not implemented for curved meshes")
 
         self._mesh = mesh
-        xp, self._w = basix.make_quadrature(
+        xp, w = basix.make_quadrature(
             basix.CellType.interval, degree, basix.QuadratureType.default
         )
+        self._w = np.asarray(w)
         xp = np.asarray(xp)
         if not callable(radius):
             assert radius >= 0, "Radius cannot be zero or negative"
@@ -167,17 +170,26 @@ class Circle:
         assert x0.shape[1] == 3, "Center points must be 3D"
         assert normals.shape[1] == 3, "Normal vectors must be 3D"
 
+        if x0.shape[0] == 0:
+            return (
+                np.zeros((0, x0.shape[1])),
+                np.zeros((0, self._w.shape[0])),
+                np.zeros((0,)),
+            )
+
         R = self._radius(x0.T)
         Rot = self.rotation_matrix(normals)
         xp = np.tile(x0, self._xp.shape[0]).reshape(x0.shape[0], self._xp.shape[0], 3)
+
         applied_rot = np.einsum("ijk,lk->ilj", Rot, self._xp)
+        if x0.shape[0] == 0:
+            assert False
         R_tiles = np.repeat(R, self._xp.shape[0]).reshape(x0.shape[0], -1)
 
         xp += np.einsum("ijk,ij->ijk", applied_rot, R_tiles)
 
         # Circumradius of the circle 2*pi*R
         # Quadrature rule is made on interval [0,1]
-        breakpoint()
         scale = 2 * R * np.pi
         tiled_scale = np.repeat(scale, self._xp.shape[0])
         weights = np.tile(self._w, x0.shape[0])
