@@ -32,6 +32,21 @@ def create_interpolation_matrix(
         The accumulation of contributions from all processes has been accounted before
         returning the matrix.
     """
+
+    # Sanity check output space
+    err_msg = (
+        "Interpolation is only implemented for elements"
+        + " with entity dofs in the interior, i.e Quadrature or DG."
+    )
+    try:
+        entity_dofs = K.element.basix_element.entity_dofs
+        for i in range(K.mesh.topology.dim):
+            for sub_dofs in entity_dofs[i]:
+                if len(sub_dofs) != 0:
+                    raise NotImplementedError(err_msg)
+    except RuntimeError:
+        if "Quadrature" not in K.element.signature:
+            raise NotImplementedError(err_msg)
     mesh_to = K.mesh
     mesh_from = V.mesh
     num_line_cells = mesh_to.topology.index_map(mesh_to.topology.dim).size_local
