@@ -10,10 +10,17 @@ import ufl
 
 from fenicsx_ii import Circle, NaiveTrace, create_interpolation_matrix
 
-ghost_modes: list[dolfinx.mesh.GhostMode] = [
-    dolfinx.mesh.GhostMode.none,
-    dolfinx.mesh.GhostMode.shared_facet,
-]
+# Only run ghost mode parametrization in parallel
+if MPI.COMM_WORLD.size == 1:
+    ghost_modes: list[dolfinx.mesh.GhostMode] = [
+        dolfinx.mesh.GhostMode.none,
+    ]
+else:
+    ghost_modes: list[dolfinx.mesh.GhostMode] = [
+        dolfinx.mesh.GhostMode.none,
+        dolfinx.mesh.GhostMode.shared_facet,
+    ]
+
 three_dimensional_cell_types: list[dolfinx.mesh.CellType] = [
     dolfinx.mesh.CellType.tetrahedron,
     dolfinx.mesh.CellType.hexahedron,
