@@ -1,11 +1,13 @@
 from mpi4py import MPI
+
 import basix.ufl
 import dolfinx
 import numpy as np
-import numpy.typing as npt
-import ufl
 import pytest
+import ufl
+
 from fenicsx_ii import NaiveTrace, create_interpolation_matrix
+
 
 def create_line(ghost_mode: dolfinx.mesh.GhostMode) -> dolfinx.mesh.Mesh:
     if MPI.COMM_WORLD.rank == 0:
@@ -30,7 +32,9 @@ def create_line(ghost_mode: dolfinx.mesh.GhostMode) -> dolfinx.mesh.Mesh:
         connectivity = np.zeros((0, 2), dtype=np.int32)
 
     c_el = ufl.Mesh(
-        basix.ufl.element("Lagrange", basix.CellType.interval, 1, shape=(nodes.shape[1],))
+        basix.ufl.element(
+            "Lagrange", basix.CellType.interval, 1, shape=(nodes.shape[1],)
+        )
     )
     line_mesh = dolfinx.mesh.create_mesh(
         MPI.COMM_WORLD,
@@ -42,18 +46,18 @@ def create_line(ghost_mode: dolfinx.mesh.GhostMode) -> dolfinx.mesh.Mesh:
     line_mesh.name = "line"
     return line_mesh
 
+
 @pytest.mark.parametrize("use_petsc", [True, False])
 @pytest.mark.parametrize("family", ["DG", "Quadrature"])
 @pytest.mark.parametrize("degree", [1, 2, 4])
-@pytest.mark.parametrize("ghost_mode", [dolfinx.mesh.GhostMode.none, dolfinx.mesh.GhostMode.shared_facet])
+@pytest.mark.parametrize(
+    "ghost_mode", [dolfinx.mesh.GhostMode.none, dolfinx.mesh.GhostMode.shared_facet]
+)
 def test_naive_trace(use_petsc, family, degree, ghost_mode):
-   
     N = 17
-    cube = dolfinx.mesh.create_unit_cube(
-        MPI.COMM_WORLD, N, N, N, ghost_mode=ghost_mode
-    )
+    cube = dolfinx.mesh.create_unit_cube(MPI.COMM_WORLD, N, N, N, ghost_mode=ghost_mode)
     cube.name = "Cube"
-    line = create_line(ghost_mode) 
+    line = create_line(ghost_mode)
     assert line.comm.size == cube.comm.size
     assert line.comm.rank == cube.comm.rank
 
@@ -62,16 +66,15 @@ def test_naive_trace(use_petsc, family, degree, ghost_mode):
     if family == "DG":
         el = ("DG", degree)
     elif family == "Quadrature":
-        el = basix.ufl.quadrature_element(line.basix_cell(), value_shape=(), degree=degree)
+        el = basix.ufl.quadrature_element(
+            line.basix_cell(), value_shape=(), degree=degree
+        )
     else:
         raise NotImplementedError(f"Test for {family=} not implemented")
-    K_hat = dolfinx.fem.functionspace(
-        line, el)
-
-
+    K_hat = dolfinx.fem.functionspace(line, el)
 
     def f(x):
-        return x[0] - x[1] + 2*x[2]
+        return x[0] - x[1] + 2 * x[2]
 
     # Interpolate reference solution onto `u`
     uh = dolfinx.fem.Function(V)
@@ -82,7 +85,7 @@ def test_naive_trace(use_petsc, family, degree, ghost_mode):
     bh = dolfinx.fem.Function(K_hat)
     use_petsc = False
     A = create_interpolation_matrix(V, K_hat, restriction, use_petsc=use_petsc)
-   
+
     if use_petsc:
         A.mult(uh.x.petsc_vec, bh.x.petsc_vec)
     else:
@@ -105,4 +108,3 @@ def test_naive_trace(use_petsc, family, degree, ghost_mode):
     bh_ref = dolfinx.fem.Function(K_hat)
     bh_ref.interpolate(f)
     np.testing.assert_allclose(bh.x.array, bh_ref.x.array)
-

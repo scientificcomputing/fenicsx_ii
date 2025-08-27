@@ -18,21 +18,25 @@ class ReductionOperator(typing.Protocol):
 
     _mesh: dolfinx.mesh.Mesh
 
-    def compute_quadrature(self, cells: npt.NDArray[np.int32]) -> Quadrature: ...
+    def compute_quadrature(
+        self, cells: npt.NDArray[np.int32], reference_points: npt.NDArray[np.floating]
+    ) -> Quadrature: ...
 
     @property
-    def num_points(self) -> int: ... 
+    def num_points(self) -> int: ...
 
 
 class NaiveTrace:
     def __init__(self, mesh: dolfinx.mesh.Mesh):
-        """Naive trace on a 1D line segment, just evaluate at physical points on line."""
+        """Naive trace on a 1D line segment.
+
+        Just evaluates input points in physical space.
+        """
         self._mesh = mesh
 
     def compute_quadrature(
         self, cells: npt.NDArray[np.int32], reference_points: npt.NDArray[np.floating]
     ) -> Quadrature:
-        # NOTE: Assumption on affine lines to get normals, have to be more creative otherwise
         points = get_physical_points(self._mesh, cells, reference_points)
         weights = np.ones((points.shape[0], 1), dtype=points.dtype)
         scales = np.ones(points.shape[0], dtype=points.dtype)
@@ -44,13 +48,14 @@ class NaiveTrace:
     def num_points(self) -> int:
         return 1
 
+
 class Circle:
     def __init__(
         self,
         mesh: dolfinx.mesh.Mesh,
         radius: float
         | typing.Callable[[npt.NDArray[np.floating]], npt.NDArray[np.floating]],
-        degree: int,
+        degree: int = 15,
     ):
         if degree < 0:
             raise ValueError("Degree must be non-negative")
@@ -63,7 +68,7 @@ class Circle:
         xp, self._w = basix.make_quadrature(
             basix.CellType.interval, degree, basix.QuadratureType.default
         )
-
+        xp = np.asarray(xp)
         if not callable(radius):
             assert radius >= 0, "Radius cannot be zero or negative"
             self._radius = lambda x: np.full(x.shape[1], radius)
@@ -91,7 +96,8 @@ class Circle:
     def rotation_matrix(
         n: npt.NDArray[np.floating],
     ) -> npt.NDArray[np.floating]:
-        """Compute the rotation matrix for circle with center(s) at x0, normal(s) n, radius(es) R)"""
+        """Compute the rotation matrix for circle with center(s) at x0, normal(s) n,
+        radius(es) R)"""
         # Normalize normal vector
         if n.ndim == 1:
             n = n.reshape(-1, 3)
@@ -126,7 +132,8 @@ class Circle:
     def compute_quadrature(
         self, cells: npt.NDArray[np.int32], reference_points: npt.NDArray[np.floating]
     ) -> Quadrature:
-        # NOTE: Assumption on affine lines to get normals, have to be more creative otherwise
+        if self._mesh.geometry.cmap.degree > 1:
+            raise NotImplementedError("Non-affine lines not supported yet")
         x_coords = get_physical_points(self._mesh, cells, reference_points)
         cell_normals = get_cell_normals(self._mesh, cells)
         normals_at_quadrature = np.repeat(

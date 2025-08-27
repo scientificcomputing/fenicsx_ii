@@ -9,12 +9,16 @@ from .interpolation_utils import create_extended_indexmap, evaluate_basis_functi
 from .restriction_operators import ReductionOperator
 
 
-def create_interpolation_matrix(V: dolfinx.fem.FunctionSpace, K:dolfinx.fem.FunctionSpace,
-                                red_op: ReductionOperator, tol:float=1.0e-8,
-                                use_petsc:bool=False)-> "PETSc.Mat" | dolfinx.la.MatrixCSR:
+def create_interpolation_matrix(
+    V: dolfinx.fem.FunctionSpace,
+    K: dolfinx.fem.FunctionSpace,
+    red_op: ReductionOperator,
+    tol: float = 1.0e-8,
+    use_petsc: bool = False,
+) -> "PETSc.Mat" | dolfinx.la.MatrixCSR:  # type: ignore[name-defined] # noqa: F821
     """
-    Create an interpolation matrix from `V` to `K` with a specific reduction operator applied
-    to the interpolation points of `K`.
+    Create an interpolation matrix from `V` to `K` with a specific reduction operator
+    applied to the interpolation points of `K`.
 
     Args:
         V: The function space to interpolate from.
@@ -31,11 +35,14 @@ def create_interpolation_matrix(V: dolfinx.fem.FunctionSpace, K:dolfinx.fem.Func
     mesh_to = K.mesh
     mesh_from = V.mesh
     num_line_cells = mesh_to.topology.index_map(mesh_to.topology.dim).size_local
-    reference_interpolation_points = K.element._cpp_object.interpolation_points()
+    reference_interpolation_points = K.element.interpolation_points
+
     num_ip_per_cell = reference_interpolation_points.shape[0]
     line_cells = np.arange(num_line_cells, dtype=np.int32)
 
-    quadrature_rule = red_op.compute_quadrature(line_cells, reference_interpolation_points)
+    quadrature_rule = red_op.compute_quadrature(
+        line_cells, reference_interpolation_points
+    )
     quad_points = quadrature_rule.points
 
     interpolation_coordinates = quad_points.reshape(-1, mesh_to.geometry.dim)
@@ -52,14 +59,14 @@ def create_interpolation_matrix(V: dolfinx.fem.FunctionSpace, K:dolfinx.fem.Func
     )  # Interpolation points relating to `cells_on_proc`
     ip_sender = (
         point_ownership.src_owner
-    ) # For IP in 1D grid, what process has taken ownership
+    )  # For IP in 1D grid, what process has taken ownership
     assert (ip_sender >= 0).all()
     ip_owner = point_ownership.dest_owners  # For received data, who sent it
 
-
     num_dofs_per_cell_K = K.dofmap.list.shape[1]
     K_dofs_to_send = np.empty(
-        (num_line_cells * num_ip_per_cell * num_average_qp, num_dofs_per_cell_K), dtype=np.int32
+        (num_line_cells * num_ip_per_cell * num_average_qp, num_dofs_per_cell_K),
+        dtype=np.int32,
     )
     sort_data_per_proc = np.argsort(
         ip_sender, stable=True
@@ -67,7 +74,7 @@ def create_interpolation_matrix(V: dolfinx.fem.FunctionSpace, K:dolfinx.fem.Func
 
     # Pack global DOFs of K to send to V for insertion on extended index map.
     for i in range(interpolation_coordinates.shape[0]):
-        local_cell_index = i // (num_ip_per_cell* num_average_qp)
+        local_cell_index = i // (num_ip_per_cell * num_average_qp)
         K_dofs_to_send[i] = K.dofmap.list[local_cell_index]
 
     K_dofs_to_send = K_dofs_to_send[sort_data_per_proc]
@@ -80,8 +87,9 @@ def create_interpolation_matrix(V: dolfinx.fem.FunctionSpace, K:dolfinx.fem.Func
         volume_recv_from.tolist(), line_sends_to.tolist(), reorder=False
     )
 
-
-    incoming_K_dofs = np.full((sum(recv_counts_K), num_dofs_per_cell_K), -1, dtype=np.int64)
+    incoming_K_dofs = np.full(
+        (sum(recv_counts_K), num_dofs_per_cell_K), -1, dtype=np.int64
+    )
     incoming_offsets_K = np.zeros(len(recv_counts_K) + 1, dtype=np.intc)
     incoming_offsets_K[1:] = np.cumsum(recv_counts_K) * num_dofs_per_cell_K
     send_counts_K *= num_dofs_per_cell_K
@@ -106,7 +114,6 @@ def create_interpolation_matrix(V: dolfinx.fem.FunctionSpace, K:dolfinx.fem.Func
     recv_message = [incoming_K_owners, recv_counts_K, _MPI.INT32_T]
     line_to_volume_comm.Neighbor_alltoallv(send_message, recv_message)
 
-
     if len(incoming_K_dofs) == 0:
         assert np.all(incoming_K_dofs > 0)
 
@@ -120,19 +127,18 @@ def create_interpolation_matrix(V: dolfinx.fem.FunctionSpace, K:dolfinx.fem.Func
     )
     assert (new_imap_K.global_to_local(incoming_K_dofs.flatten()) >= 0).all()
 
-
     # Send global DOF numbering from V to K for sparsity pattern insertion
     line_to_volume_comm = mesh_to.comm.Create_dist_graph_adjacent(
         volume_recv_from.tolist(), line_sends_to.tolist(), reorder=False
     )
     num_dofs_per_cell_V = V.dofmap.list.shape[1]
 
-    send_counts_V = (recv_counts_K / (num_dofs_per_cell_K) * num_dofs_per_cell_V).astype(
-        np.intc
-    )
-    recv_counts_V = (send_counts_K / (num_dofs_per_cell_K) * num_dofs_per_cell_V).astype(
-        np.intc
-    )
+    send_counts_V = (
+        recv_counts_K / (num_dofs_per_cell_K) * num_dofs_per_cell_V
+    ).astype(np.intc)
+    recv_counts_V = (
+        send_counts_K / (num_dofs_per_cell_K) * num_dofs_per_cell_V
+    ).astype(np.intc)
     volume_to_line_comm = mesh_from.comm.Create_dist_graph_adjacent(
         line_sends_to.tolist(), volume_recv_from.tolist(), reorder=False
     )
@@ -199,7 +205,6 @@ def create_interpolation_matrix(V: dolfinx.fem.FunctionSpace, K:dolfinx.fem.Func
     line_to_volume_comm.Free()
     volume_to_line_comm.Free()
 
-
     # Create sparsity pattern for the interpolation matrix
     sp = dolfinx.cpp.la.SparsityPattern(
         K.mesh.comm,
@@ -210,14 +215,20 @@ def create_interpolation_matrix(V: dolfinx.fem.FunctionSpace, K:dolfinx.fem.Func
     V_in_Q_order = np.argsort(insert_position, stable=True)
 
     assert K.element.interpolation_ident
-    assert K.element.needs_dof_transformations == False
+    assert not K.element.needs_dof_transformations
     for i in range(num_line_cells):
         local_k_dofs = K.dofmap.list[i]
-        local_v_dofs = new_local_V_dofs[V_in_Q_order[num_dofs_per_cell_K*num_average_qp*i:num_dofs_per_cell_K*num_average_qp*(i+1)]]
+        local_v_dofs = new_local_V_dofs[
+            V_in_Q_order[
+                num_dofs_per_cell_K * num_average_qp * i : num_dofs_per_cell_K
+                * num_average_qp
+                * (i + 1)
+            ]
+        ]
         for j in range(num_dofs_per_cell_K):
             for k in range(num_average_qp):
-                ldofs = local_v_dofs[j*num_average_qp+k]
-                sp.insert(local_k_dofs[j:j+1], ldofs)
+                ldofs = local_v_dofs[j * num_average_qp + k]
+                sp.insert(local_k_dofs[j : j + 1], ldofs)
     sp.finalize()
 
     # Create distributed petsc matrix and insert basis function values
@@ -225,32 +236,50 @@ def create_interpolation_matrix(V: dolfinx.fem.FunctionSpace, K:dolfinx.fem.Func
     scales = quadrature_rule.scales
 
     if use_petsc:
-        assert dolfinx.has_petsc, "DOLFINx has to be installed with PETSc support to use PETSc matrices"
+        assert dolfinx.has_petsc, (
+            "DOLFINx has to be installed with PETSc support to use PETSc matrices"
+        )
         from petsc4py import PETSc
+
         A = dolfinx.cpp.la.petsc.create_matrix(K.mesh.comm, sp)
 
         def insert_function(A, rows, columns, values):
             A.setValuesLocal(rows, columns, values, addv=PETSc.InsertMode.ADD)
+
         def finalize(A):
             A.assemble()
     else:
-        A = dolfinx.la.matrix_csr(sp,block_mode=dolfinx.la.BlockMode.compact, dtype=dolfinx.default_scalar_type)
+        A = dolfinx.la.matrix_csr(
+            sp,
+            block_mode=dolfinx.la.BlockMode.compact,
+            dtype=dolfinx.default_scalar_type,
+        )
+
         def insert_function(A, rows, columns, values):
             A.add(values, rows, columns)
+
         def finalize(A):
             A.scatter_reverse()
 
     for i in range(num_line_cells):
         local_k_dofs = K.dofmap.list[i]
-        V_slice = V_in_Q_order[num_average_qp*num_dofs_per_cell_K*i:num_average_qp*num_dofs_per_cell_K*(i+1)]
+        V_slice = V_in_Q_order[
+            num_average_qp * num_dofs_per_cell_K * i : num_average_qp
+            * num_dofs_per_cell_K
+            * (i + 1)
+        ]
         local_v_dofs = new_local_V_dofs[V_slice]
         local_v_values = recv_basis_functions[V_slice]
         for j in range(num_dofs_per_cell_K):
-            local_dofs = local_v_dofs[j*num_average_qp: (j+1)*num_average_qp]
-            local_values = local_v_values[j*num_average_qp:(j+1)*num_average_qp]
-            average_weights = weights[i*num_dofs_per_cell_K+j]
-            lv = local_values*average_weights[:,None]/scales[i*num_dofs_per_cell_K+j]
+            local_dofs = local_v_dofs[j * num_average_qp : (j + 1) * num_average_qp]
+            local_values = local_v_values[j * num_average_qp : (j + 1) * num_average_qp]
+            average_weights = weights[i * num_dofs_per_cell_K + j]
+            lv = (
+                local_values
+                * average_weights[:, None]
+                / scales[i * num_dofs_per_cell_K + j]
+            )
             for k in range(num_average_qp):
-                insert_function(A, local_k_dofs[j:j+1], local_dofs[k], lv[k])
+                insert_function(A, local_k_dofs[j : j + 1], local_dofs[k], lv[k])
     finalize(A)
     return A

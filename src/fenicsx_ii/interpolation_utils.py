@@ -18,8 +18,9 @@ def evaluate_basis_function(
         V: The function space
         points: The points to evaluate at (in physical space)
         cells: The cells. The ith cell corresponds to the ith point.
-        batch_size: The number of points/cells to evaluate at the time, to find a balance between
-            flooding the expression cache and the memory usage.
+        batch_size: The number of points/cells to evaluate at the time,
+            to find a balance between flooding the expression cache and
+            the memory usage.
 
     Returns:
         The evaluated basis functions at the given points.
@@ -53,8 +54,10 @@ def evaluate_basis_function(
             expr = dolfinx.fem.Expression(u, x_batch, comm=_MPI.COMM_SELF)
             all_values = expr.eval(mesh, cell_batch)
 
-            # Diagonalize values (num_cells, num_points, num_dofs, bs) -> (num_cells, num_dofs)
-            # or Diagonalize values (num_cells, num_points, value_size, num_dofs) -> (num_cells, num_dofs)
+            # Diagonalize values
+            # (num_cells, num_points, num_dofs, bs)-> (num_cells, num_dofs)
+            # or
+            # (num_cells, num_points, value_size, num_dofs) -> (num_cells, num_dofs)
             if bs == 1:
                 if value_size > 1:
                     # Values have shape (num_cells, num_points,value_size, num_dofs)
