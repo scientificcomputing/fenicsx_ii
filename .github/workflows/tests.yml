@@ -1,0 +1,38 @@
+name: Test package
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test-code:
+    name: Test on ${{ matrix.container }}
+    runs-on: ubuntu-24.04
+    container: ${{ matrix.container }}
+    env:
+      DEB_PYTHON_INSTALL_LAYOUT: deb_system
+    strategy:
+      fail-fast: false
+      matrix:
+        container: [
+          "ghcr.io/fenics/dolfinx/dolfinx:stable",
+          "ghcr.io/fenics/dolfinx/dolfinx:nightly"
+        ]
+
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Update pip
+        run: python3 -m pip install --upgrade pip
+
+      - name: Install package
+        run: |
+          python3 -m pip install .[test] --no-build-isolation
+
+      - name: Run tests
+        run: python3 -m pytest -v
+
+      - name: Run tests in parallel
+        run: mpiexec -n 4 python3 -m pytest -v  -m "not serial"
