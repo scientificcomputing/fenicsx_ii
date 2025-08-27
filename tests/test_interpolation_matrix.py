@@ -12,11 +12,11 @@ from fenicsx_ii import Circle, NaiveTrace, create_interpolation_matrix
 
 # Only run ghost mode parametrization in parallel
 if MPI.COMM_WORLD.size == 1:
-    ghost_modes: list[dolfinx.mesh.GhostMode] = [
+    ghost_modes = [
         dolfinx.mesh.GhostMode.none,
     ]
 else:
-    ghost_modes: list[dolfinx.mesh.GhostMode] = [
+    ghost_modes = [
         dolfinx.mesh.GhostMode.none,
         dolfinx.mesh.GhostMode.shared_facet,
     ]
