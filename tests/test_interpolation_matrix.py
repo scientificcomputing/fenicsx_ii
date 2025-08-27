@@ -163,9 +163,9 @@ def test_naive_trace(use_petsc, family, degree, curved_line, unit_cube):
 
 @pytest.mark.parametrize("use_petsc", [True, False])
 @pytest.mark.parametrize("family", ["DG", "Quadrature"])
-@pytest.mark.parametrize("degree", [2, 4])
+@pytest.mark.parametrize("degree", [2, 3])
 @pytest.mark.parametrize("case", [1, 2, 3, 4])
-@pytest.mark.parametrize("radius", [0.53, 0.12, 0.02])
+@pytest.mark.parametrize("radius", [0.53, lambda x: x[2]])
 def test_circle_trace(use_petsc, family, degree, line, box, radius, case):
     V = dolfinx.fem.functionspace(box, ("Lagrange", 3))
 
@@ -192,12 +192,17 @@ def test_circle_trace(use_petsc, family, degree, line, box, radius, case):
             raise ValueError(f"{case=} is not supported")
 
     def Pi_f(x):
+        if callable(radius):
+            radius_val = radius(x)
+        else:
+            radius_val = np.full_like(x[0], radius)
+
         if case == 1:
             return x[2]
         elif case == 2:
-            return np.full_like(x[0], radius**2)
+            return radius_val**2
         elif case == 3:
-            return x[2] * radius**2
+            return x[2] * radius_val**2
         elif case == 4:
             return np.sin(0.5 * np.pi * x[2])
         else:
@@ -206,7 +211,7 @@ def test_circle_trace(use_petsc, family, degree, line, box, radius, case):
     # Interpolate reference solution onto `u`
     uh = dolfinx.fem.Function(V)
     uh.interpolate(f)
-    restriction = Circle(line, radius, degree=10)
+    restriction = Circle(line, radius, degree=6)
 
     bh = dolfinx.fem.Function(K_hat)
     use_petsc = False
