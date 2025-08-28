@@ -1,6 +1,7 @@
 """Utilities for FEniCSx ii"""
 
 from mpi4py import MPI as _MPI
+
 import dolfinx
 import numpy as np
 import numpy.typing as npt
@@ -46,10 +47,12 @@ def unroll_dofmap(dofs: npt.NDArray[np.int32], bs: int) -> npt.NDArray[np.int32]
     return unrolled_dofmap
 
 
-def send_dofs_to_other_process(K: dolfinx.fem.FunctionSpace,
-                               dest_processes: npt.NDArray[np.int32],
-                               recv_processes: npt.NDArray[np.int32],
-                               cells: npt.NDArray[np.int32]) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.int32]]:
+def send_dofs_to_other_process(
+    K: dolfinx.fem.FunctionSpace,
+    dest_processes: npt.NDArray[np.int32],
+    recv_processes: npt.NDArray[np.int32],
+    cells: npt.NDArray[np.int32],
+) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.int32]]:
     """Send slices of a dofmap, i.e. `dofmap[cells]` to the `recv_processes`
         and corresponding owner indices for each global dof.
 

@@ -7,7 +7,7 @@ import numpy as np
 
 from .interpolation_utils import create_extended_indexmap, evaluate_basis_function
 from .restriction_operators import ReductionOperator
-from .utils import unroll_dofmap, send_dofs_to_other_process
+from .utils import send_dofs_to_other_process, unroll_dofmap
 
 
 def create_interpolation_matrix(
@@ -66,7 +66,10 @@ def create_interpolation_matrix(
 
     num_dofs_per_cell_K = K.dofmap.list.shape[1]
     incoming_K_dofs, incoming_K_owners = send_dofs_to_other_process(
-        K, ip_owner, ip_sender, np.repeat(np.arange(num_line_cells), num_ip_per_cell*num_average_qp)
+        K,
+        ip_owner,
+        ip_sender,
+        np.repeat(np.arange(num_line_cells), num_ip_per_cell * num_average_qp),
     )
     # Create extended index map
     new_imap_K = create_extended_indexmap(
@@ -79,7 +82,8 @@ def create_interpolation_matrix(
     assert (new_imap_K.global_to_local(incoming_K_dofs.flatten()) >= 0).all()
 
     incoming_V_dofs, incoming_V_owners = send_dofs_to_other_process(
-        V, ip_sender, ip_owner, cells_on_proc)
+        V, ip_sender, ip_owner, cells_on_proc
+    )
 
     # Create extended index map
     new_imap_V = create_extended_indexmap(
@@ -103,8 +107,12 @@ def create_interpolation_matrix(
     )
     volume_send_to, send_counts_V = np.unique(ip_owner, return_counts=True)
     line_recv_from, recv_counts_V = np.unique(ip_sender, return_counts=True)
-    basis_send_counts = send_counts_V * num_dofs_per_cell_V * V.dofmap.bs * second_dimension
-    basis_recv_counts = recv_counts_V * num_dofs_per_cell_V * V.dofmap.bs * second_dimension
+    basis_send_counts = (
+        send_counts_V * num_dofs_per_cell_V * V.dofmap.bs * second_dimension
+    )
+    basis_recv_counts = (
+        recv_counts_V * num_dofs_per_cell_V * V.dofmap.bs * second_dimension
+    )
     send_message = [basis_values_on_V.flatten(), basis_send_counts, _MPI.DOUBLE]
     recv_message = [recv_basis_functions, basis_recv_counts, _MPI.DOUBLE]
     volume_to_line_comm = mesh_from.comm.Create_dist_graph_adjacent(
