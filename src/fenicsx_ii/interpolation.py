@@ -7,7 +7,7 @@ import numpy as np
 
 from .interpolation_utils import create_extended_indexmap, evaluate_basis_function
 from .restriction_operators import ReductionOperator
-from .utils import unroll_dofmap
+from .utils import unroll_dofmap, send_dofs_to_other_process
 
 
 def create_interpolation_matrix(
@@ -65,59 +65,9 @@ def create_interpolation_matrix(
     ip_owner = point_ownership.dest_owners  # For received data, who sent it
 
     num_dofs_per_cell_K = K.dofmap.list.shape[1]
-    K_dofs_to_send = np.empty(
-        (num_line_cells * num_ip_per_cell * num_average_qp, num_dofs_per_cell_K),
-        dtype=np.int32,
+    incoming_K_dofs, incoming_K_owners = send_dofs_to_other_process(
+        K, ip_owner, ip_sender, np.repeat(np.arange(num_line_cells), num_ip_per_cell*num_average_qp)
     )
-    sort_data_per_proc = np.argsort(
-        ip_sender, stable=True
-    )  # Sort data to send per process that has taken ownership
-
-    # Pack global DOFs of K to send to V for insertion on extended index map.
-    for i in range(interpolation_coordinates.shape[0]):
-        local_cell_index = i // (num_ip_per_cell * num_average_qp)
-        K_dofs_to_send[i] = K.dofmap.list[local_cell_index]
-
-    K_dofs_to_send = K_dofs_to_send[sort_data_per_proc]
-    K_global_dofs = K.dofmap.index_map.local_to_global(K_dofs_to_send.flatten())
-    # Send global DOF numbering from K to V for sparsity pattern insertion
-    # We also send who owns the global dofs
-    line_sends_to, send_counts_K = np.unique(ip_sender, return_counts=True)
-    volume_recv_from, recv_counts_K = np.unique(ip_owner, return_counts=True)
-    line_to_volume_comm = mesh_to.comm.Create_dist_graph_adjacent(
-        volume_recv_from.tolist(), line_sends_to.tolist(), reorder=False
-    )
-
-    incoming_K_dofs = np.full(
-        (sum(recv_counts_K), num_dofs_per_cell_K), -1, dtype=np.int64
-    )
-    incoming_offsets_K = np.zeros(len(recv_counts_K) + 1, dtype=np.intc)
-    incoming_offsets_K[1:] = np.cumsum(recv_counts_K) * num_dofs_per_cell_K
-    send_counts_K *= num_dofs_per_cell_K
-    recv_counts_K *= num_dofs_per_cell_K
-    outgoing_offsets_K = np.zeros(len(send_counts_K) + 1, dtype=np.intc)
-    outgoing_offsets_K[1:] = np.cumsum(send_counts_K) * num_dofs_per_cell_K
-    send_message = [K_global_dofs, send_counts_K, _MPI.INT64_T]
-    recv_message = [incoming_K_dofs, recv_counts_K, _MPI.INT64_T]
-    line_to_volume_comm.Neighbor_alltoallv(send_message, recv_message)
-
-    # Send ownership info
-    num_K_dofs_local = K.dofmap.index_map.size_local
-    is_K_ghost = K_dofs_to_send.flatten() < num_K_dofs_local
-    send_dof_owners_K = np.empty(sum(send_counts_K), dtype=np.int32)
-    send_dof_owners_K[is_K_ghost] = K.mesh.comm.rank
-    local_ghost_index = K_dofs_to_send.flatten() - num_K_dofs_local
-    send_dof_owners_K[~is_K_ghost] = K.dofmap.index_map.owners[
-        local_ghost_index[~is_K_ghost]
-    ]
-    send_message = [send_dof_owners_K, send_counts_K, _MPI.INT32_T]
-    incoming_K_owners = np.empty(sum(recv_counts_K), dtype=np.int32)
-    recv_message = [incoming_K_owners, recv_counts_K, _MPI.INT32_T]
-    line_to_volume_comm.Neighbor_alltoallv(send_message, recv_message)
-
-    if len(incoming_K_dofs) == 0:
-        assert np.all(incoming_K_dofs > 0)
-
     # Create extended index map
     new_imap_K = create_extended_indexmap(
         K.mesh.comm,
@@ -128,58 +78,8 @@ def create_interpolation_matrix(
     )
     assert (new_imap_K.global_to_local(incoming_K_dofs.flatten()) >= 0).all()
 
-    # Send global DOF numbering from V to K for sparsity pattern insertion
-    line_to_volume_comm = mesh_to.comm.Create_dist_graph_adjacent(
-        volume_recv_from.tolist(), line_sends_to.tolist(), reorder=False
-    )
-    num_dofs_per_cell_V = V.dofmap.list.shape[1]
-
-    send_counts_V = (
-        recv_counts_K / (num_dofs_per_cell_K) * num_dofs_per_cell_V
-    ).astype(np.intc)
-    recv_counts_V = (
-        send_counts_K / (num_dofs_per_cell_K) * num_dofs_per_cell_V
-    ).astype(np.intc)
-    volume_to_line_comm = mesh_from.comm.Create_dist_graph_adjacent(
-        line_sends_to.tolist(), volume_recv_from.tolist(), reorder=False
-    )
-
-    V_dofs_to_send = np.empty(
-        (points_on_proc.shape[0], num_dofs_per_cell_V), dtype=np.int32
-    )
-
-    # Pack V_dofs to send
-    for i, cell_V in enumerate(cells_on_proc):
-        V_dofs_to_send[i] = V.dofmap.list[cell_V]
-    V_global_dofs = V.dofmap.index_map.local_to_global(V_dofs_to_send.flatten())
-    # Check that point ownership has sorted input already
-    sorted_V = np.argsort(ip_owner, stable=True)
-    assert np.allclose(sorted_V, np.arange(len(sorted_V)))
-
-    incoming_V_dofs = np.full(sum(recv_counts_V), -1, dtype=np.int64)
-    incoming_offsets_V = np.zeros(len(recv_counts_V) + 1, dtype=np.intc)
-    incoming_offsets_V[1:] = np.cumsum(recv_counts_V) * num_dofs_per_cell_V
-    outgoing_offsets_V = np.zeros(len(send_counts_V) + 1, dtype=np.intc)
-    outgoing_offsets_V[1:] = np.cumsum(send_counts_V) * num_dofs_per_cell_V
-    send_message = [V_global_dofs, send_counts_V, _MPI.INT64_T]
-    recv_message = [incoming_V_dofs, recv_counts_V, _MPI.INT64_T]
-    volume_to_line_comm.Neighbor_alltoallv(send_message, recv_message)
-
-    # Send ownership info
-    num_V_dofs_local = V.dofmap.index_map.size_local
-    is_V_ghost = V_dofs_to_send.flatten() < num_V_dofs_local
-
-    send_dof_owners_V = np.empty(sum(send_counts_V), dtype=np.int32)
-    send_dof_owners_V[is_V_ghost] = V.mesh.comm.rank
-    local_ghost_index = V_dofs_to_send.flatten() - num_V_dofs_local
-    send_dof_owners_V[~is_V_ghost] = V.dofmap.index_map.owners[
-        local_ghost_index[~is_V_ghost]
-    ]
-
-    send_message = [send_dof_owners_V, send_counts_V, _MPI.INT32_T]
-    incoming_V_owners = np.empty(sum(recv_counts_V), dtype=np.int32)
-    recv_message = [incoming_V_owners, recv_counts_V, _MPI.INT32_T]
-    volume_to_line_comm.Neighbor_alltoallv(send_message, recv_message)
+    incoming_V_dofs, incoming_V_owners = send_dofs_to_other_process(
+        V, ip_sender, ip_owner, cells_on_proc)
 
     # Create extended index map
     new_imap_V = create_extended_indexmap(
@@ -189,6 +89,7 @@ def create_interpolation_matrix(
         incoming_V_owners,
         321,
     )
+    num_dofs_per_cell_V = V.dofmap.list.shape[1]
     new_local_V_dofs = new_imap_V.global_to_local(incoming_V_dofs.flatten())
     assert (new_local_V_dofs >= 0).all()
     new_local_V_dofs = new_local_V_dofs.reshape(-1, num_dofs_per_cell_V)
@@ -200,14 +101,17 @@ def create_interpolation_matrix(
         (len(ip_sender), basis_values_on_V.shape[1], basis_values_on_V.shape[2]),
         dtype=basis_values_on_V.dtype,
     )
-    basis_send_counts = send_counts_V * V.dofmap.bs * second_dimension
-    basis_recv_counts = recv_counts_V * V.dofmap.bs * second_dimension
+    volume_send_to, send_counts_V = np.unique(ip_owner, return_counts=True)
+    line_recv_from, recv_counts_V = np.unique(ip_sender, return_counts=True)
+    basis_send_counts = send_counts_V * num_dofs_per_cell_V * V.dofmap.bs * second_dimension
+    basis_recv_counts = recv_counts_V * num_dofs_per_cell_V * V.dofmap.bs * second_dimension
     send_message = [basis_values_on_V.flatten(), basis_send_counts, _MPI.DOUBLE]
     recv_message = [recv_basis_functions, basis_recv_counts, _MPI.DOUBLE]
+    volume_to_line_comm = mesh_from.comm.Create_dist_graph_adjacent(
+        line_recv_from.tolist(), volume_send_to.tolist(), reorder=False
+    )
     volume_to_line_comm.Neighbor_alltoallv(send_message, recv_message)
-
     # Free communicators post communication
-    line_to_volume_comm.Free()
     volume_to_line_comm.Free()
 
     # Create sparsity pattern for the interpolation matrix
