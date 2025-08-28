@@ -9,6 +9,7 @@ from .interpolation_utils import create_extended_indexmap, evaluate_basis_functi
 from .restriction_operators import ReductionOperator
 from .utils import unroll_dofmap
 
+
 def create_interpolation_matrix(
     V: dolfinx.fem.FunctionSpace,
     K: dolfinx.fem.FunctionSpace,
@@ -195,7 +196,10 @@ def create_interpolation_matrix(
     # Evaluate basis functions in 3D space
     basis_values_on_V = evaluate_basis_function(V, points_on_proc, cells_on_proc)
     second_dimension = max(V.dofmap.bs, np.prod(V.element.basix_element.value_shape))
-    recv_basis_functions = np.empty((len(ip_sender),basis_values_on_V.shape[1],basis_values_on_V.shape[2]), dtype=basis_values_on_V.dtype)
+    recv_basis_functions = np.empty(
+        (len(ip_sender), basis_values_on_V.shape[1], basis_values_on_V.shape[2]),
+        dtype=basis_values_on_V.dtype,
+    )
     basis_send_counts = send_counts_V * V.dofmap.bs * second_dimension
     basis_recv_counts = recv_counts_V * V.dofmap.bs * second_dimension
     send_message = [basis_values_on_V.flatten(), basis_send_counts, _MPI.DOUBLE]
@@ -274,7 +278,7 @@ def create_interpolation_matrix(
     K_bs = K.dofmap.bs
     dofs_visited[K.dofmap.index_map.size_local * K.dofmap.index_map_bs :] = True
     padded_K_dm = unroll_dofmap(K.dofmap.list, K_bs)
-    local_visit = np.full(num_average_qp*K_bs, False, dtype=np.bool_)
+    local_visit = np.full(num_average_qp * K_bs, False, dtype=np.bool_)
     for i in range(num_line_cells):
         local_k_dofs = padded_K_dm[i]
         V_slice = V_in_Q_order[
@@ -290,17 +294,22 @@ def create_interpolation_matrix(
             average_weights = weights[i * num_dofs_per_cell_K + j]
             # Get visited dofs from previous run
             for b in range(K_bs):
-                local_visit[:] = dofs_visited[local_k_dofs[j*K_bs+b]]
+                local_visit[:] = dofs_visited[local_k_dofs[j * K_bs + b]]
                 lv = (
-                    local_values[:,:,b]
+                    local_values[:, :, b]
                     * average_weights[:, None]
                     / scales[i * num_dofs_per_cell_K + j]
                 )
                 for k in range(num_average_qp):
                     # We insert for all average nodes, thus local visit
                     # is only updated next time we pass through the `j` loop
-                    lv[k][:] = 0 if local_visit[b*num_average_qp+k] else lv[k]
-                    insert_function(A, local_k_dofs[j*K_bs+b : j*K_bs+b + 1], local_dofs[k], lv[k])
-                    dofs_visited[local_k_dofs[j*K_bs+b]] = True
+                    lv[k][:] = 0 if local_visit[b * num_average_qp + k] else lv[k]
+                    insert_function(
+                        A,
+                        local_k_dofs[j * K_bs + b : j * K_bs + b + 1],
+                        local_dofs[k],
+                        lv[k],
+                    )
+                    dofs_visited[local_k_dofs[j * K_bs + b]] = True
     finalize(A)
     return A

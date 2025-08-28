@@ -238,14 +238,12 @@ def test_circle_trace(use_petsc, family, degree, line, box, radius, case):
     np.testing.assert_allclose(bh.x.array, bh_ref.x.array, atol=1e-6)
 
 
-
-
 @pytest.mark.parametrize("use_petsc", [True, False])
 @pytest.mark.parametrize("family", ["DG", "P"])
 @pytest.mark.parametrize("degree", [2])
 def test_naive_trace_vector(use_petsc, family, degree, curved_line, unit_cube):
-    shape = (unit_cube.geometry.dim, )
-    V = dolfinx.fem.functionspace(unit_cube, ("Lagrange", 1,shape))
+    shape = (unit_cube.geometry.dim,)
+    V = dolfinx.fem.functionspace(unit_cube, ("Lagrange", 1, shape))
 
     if family == "Quadrature":
         el = basix.ufl.quadrature_element(
@@ -256,7 +254,7 @@ def test_naive_trace_vector(use_petsc, family, degree, curved_line, unit_cube):
     K_hat = dolfinx.fem.functionspace(curved_line, el)
 
     def f(x):
-        return x[0] - x[1] + 2 * x[2], x[2] + 3*x[1], x[0]+x[1]
+        return x[0] - x[1] + 2 * x[2], x[2] + 3 * x[1], x[0] + x[1]
 
     # Interpolate reference solution onto `u`
     uh = dolfinx.fem.Function(V)

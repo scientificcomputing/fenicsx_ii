@@ -41,9 +41,14 @@ def evaluate_basis_function(
     num_dofs = V.dofmap.dof_layout.num_dofs
     value_size = np.prod(V.element.basix_element.value_shape)
     if bs > 1 and value_size > 1:
-        raise ValueError(f"A function space cant have both {value_size=} and {bs=} bigger than 1.")
+        raise ValueError(
+            f"A function space cant have both {value_size=} and {bs=} bigger than 1."
+        )
     # Get basis values as (num_cells, num_basis_functions*bs, max(bs, value_size))
-    basis_values = np.zeros((len(cells), num_dofs*bs, max(bs, value_size)), dtype=dolfinx.default_scalar_type)
+    basis_values = np.zeros(
+        (len(cells), num_dofs * bs, max(bs, value_size)),
+        dtype=dolfinx.default_scalar_type,
+    )
     if len(cells) > 0:
         # NOTE: Expression lives on only this communicator rank
         # Expression is evaluated for every point in every cell, which means that we
@@ -56,9 +61,13 @@ def evaluate_basis_function(
             expr = dolfinx.fem.Expression(u, x_batch, comm=_MPI.COMM_SELF)
             all_values = expr.eval(mesh, cell_batch)
             if bs > 1:
-                basis_values[b*batch_size:(b+1)*batch_size, :, :] = np.swapaxes(np.diagonal(all_values,axis1=0, axis2=1), 0, 2)
+                basis_values[b * batch_size : (b + 1) * batch_size, :, :] = np.swapaxes(
+                    np.diagonal(all_values, axis1=0, axis2=1), 0, 2
+                )
             else:
-                basis_values[b*batch_size:(b+1)*batch_size, :, :] = np.diagonal(all_values, axis1=0, axis2=1).T.reshape(-1, basis_values.shape[1], basis_values.shape[2])
+                basis_values[b * batch_size : (b + 1) * batch_size, :, :] = np.diagonal(
+                    all_values, axis1=0, axis2=1
+                ).T.reshape(-1, basis_values.shape[1], basis_values.shape[2])
     return basis_values
 
 
