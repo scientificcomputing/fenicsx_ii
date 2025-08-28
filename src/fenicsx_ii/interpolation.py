@@ -32,21 +32,6 @@ def create_interpolation_matrix(
         The accumulation of contributions from all processes has been accounted before
         returning the matrix.
     """
-
-    # Sanity check output space
-    err_msg = (
-        "Interpolation is only implemented for elements"
-        + " with entity dofs in the interior, i.e Quadrature or DG."
-    )
-    try:
-        entity_dofs = K.element.basix_element.entity_dofs
-        for i in range(K.mesh.topology.dim):
-            for sub_dofs in entity_dofs[i]:
-                if len(sub_dofs) != 0:
-                    raise NotImplementedError(err_msg)
-    except RuntimeError:
-        if "Quadrature" not in K.element.signature:
-            raise NotImplementedError(err_msg)
     mesh_to = K.mesh
     mesh_from = V.mesh
     num_line_cells = mesh_to.topology.index_map(mesh_to.topology.dim).size_local
@@ -276,6 +261,17 @@ def create_interpolation_matrix(
         def finalize(A):
             A.scatter_reverse()
 
+    # Keep track of dofs that are local to process, to ensure that we only insert for
+    # - Once per degree of freedom
+    # - Only on the process that owns the degree of freedom
+    dofs_visited = np.full(
+        (K.dofmap.index_map.size_local + K.dofmap.index_map.num_ghosts)
+        * K.dofmap.index_map_bs,
+        False,
+        dtype=np.bool_,
+    )
+    dofs_visited[K.dofmap.index_map.size_local * K.dofmap.index_map_bs :] = True
+    local_visit = np.full(num_average_qp, False, dtype=np.bool_)
     for i in range(num_line_cells):
         local_k_dofs = K.dofmap.list[i]
         V_slice = V_in_Q_order[
@@ -294,7 +290,13 @@ def create_interpolation_matrix(
                 * average_weights[:, None]
                 / scales[i * num_dofs_per_cell_K + j]
             )
+            # Get visited dofs from previous run
+            local_visit[:] = dofs_visited[local_k_dofs[j]]
             for k in range(num_average_qp):
+                # We insert for all average nodes, thus local visit
+                # is only updated next time we pass through the `j` loop
+                lv[k][:] = 0 if local_visit[k] else lv[k]
                 insert_function(A, local_k_dofs[j : j + 1], local_dofs[k], lv[k])
+                dofs_visited[local_k_dofs[j]] = True
     finalize(A)
     return A
