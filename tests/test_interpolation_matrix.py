@@ -236,3 +236,53 @@ def test_circle_trace(use_petsc, family, degree, line, box, radius, case):
     bh_ref.interpolate(Pi_f)
 
     np.testing.assert_allclose(bh.x.array, bh_ref.x.array, atol=1e-6)
+
+
+@pytest.mark.parametrize("use_petsc", [True, False])
+@pytest.mark.parametrize("family", ["DG", "P"])
+@pytest.mark.parametrize("degree", [2])
+def test_naive_trace_vector(use_petsc, family, degree, curved_line, unit_cube):
+    shape = (unit_cube.geometry.dim,)
+    V = dolfinx.fem.functionspace(unit_cube, ("Lagrange", 1, shape))
+
+    if family == "Quadrature":
+        el = basix.ufl.quadrature_element(
+            curved_line.basix_cell(), value_shape=shape, degree=degree
+        )
+    else:
+        el = (family, degree, shape)
+    K_hat = dolfinx.fem.functionspace(curved_line, el)
+
+    def f(x):
+        return x[0] - x[1] + 2 * x[2], x[2] + 3 * x[1], x[0] + x[1]
+
+    # Interpolate reference solution onto `u`
+    uh = dolfinx.fem.Function(V)
+    uh.interpolate(f)
+
+    restriction = NaiveTrace(curved_line)
+    bh = dolfinx.fem.Function(K_hat)
+    A = create_interpolation_matrix(V, K_hat, restriction, use_petsc=use_petsc)
+
+    if use_petsc:
+        A.mult(uh.x.petsc_vec, bh.x.petsc_vec)
+    else:
+        # NOTE: Implicit assumption in DOLFINx that the dofs map of input vector
+        # is the same as the once used within the matrix
+
+        # Transfer from standard function to compatible vector
+        num_owned_dofs = A.index_map(1).size_local * A.block_size[1]
+        u_vec = dolfinx.la.vector(A.index_map(1), A.block_size[1])
+        u_vec.array[:num_owned_dofs] = uh.x.array[:num_owned_dofs]
+        u_vec.scatter_forward()
+        b_vec = dolfinx.la.vector(A.index_map(0), A.block_size[0])
+        A.mult(u_vec, b_vec)
+        b_vec.scatter_forward()
+        # Transfer back to DOLFINx vector
+        num_owned_dofs_b = A.index_map(0).size_local * A.block_size[0]
+        bh.x.array[:num_owned_dofs_b] = b_vec.array[:num_owned_dofs_b]
+    bh.x.scatter_forward()
+
+    bh_ref = dolfinx.fem.Function(K_hat)
+    bh_ref.interpolate(f)
+    np.testing.assert_allclose(bh.x.array, bh_ref.x.array)
