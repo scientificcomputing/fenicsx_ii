@@ -61,6 +61,10 @@ def send_dofs_to_other_process(
         dest_processes: List of which processes the current rank gets data from
         recv_processes: List of processes which each entry in `cells` is sent to
         cells: List of cell indices (local to process) to extract dofmap from
+
+    Returns:
+        The dofmap (in global indices) that was sent to the process, and the
+        corresponding dof owner for each entry in the map.
     """
     sort_data_per_proc = np.argsort(
         recv_processes, stable=True
