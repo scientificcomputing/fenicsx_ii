@@ -38,10 +38,12 @@ def evaluate_basis_function(
     # Create expression evaluating a trial function (i.e. just the basis function)
     u = ufl.TestFunction(V)
     bs = V.dofmap.bs
-    num_dofs = V.dofmap.dof_layout.num_dofs * bs
-    value_size = V.value_size
-
-    basis_values = np.zeros((len(cells), num_dofs), dtype=dolfinx.default_scalar_type)
+    num_dofs = V.dofmap.dof_layout.num_dofs
+    value_size = np.prod(V.element.basix_element.value_shape)
+    if bs > 1 and value_size > 1:
+        raise ValueError(f"A function space cant have both {value_size=} and {bs=} bigger than 1.")
+    # Get basis values as (num_cells, num_basis_functions*bs, max(bs, value_size))
+    basis_values = np.zeros((len(cells), num_dofs*bs, max(bs, value_size)), dtype=dolfinx.default_scalar_type)
     if len(cells) > 0:
         # NOTE: Expression lives on only this communicator rank
         # Expression is evaluated for every point in every cell, which means that we
@@ -53,30 +55,10 @@ def evaluate_basis_function(
             cell_batch = cells[b * batch_size : (b + 1) * batch_size]
             expr = dolfinx.fem.Expression(u, x_batch, comm=_MPI.COMM_SELF)
             all_values = expr.eval(mesh, cell_batch)
-
-            # Diagonalize values
-            # (num_cells, num_points, num_dofs, bs)-> (num_cells, num_dofs)
-            # or
-            # (num_cells, num_points, value_size, num_dofs) -> (num_cells, num_dofs)
-            if bs == 1:
-                if value_size > 1:
-                    # Values have shape (num_cells, num_points,value_size, num_dofs)
-                    for i in range(len(cell_batch)):
-                        basis_values[b * batch_size + i] = sum(
-                            all_values[i, i, j, :] for j in range(value_size)
-                        )
-                else:
-                    # Values have shape (num_cells, num_points, num_dofs)
-                    for i in range(len(cell_batch)):
-                        basis_values[b * batch_size + i] = all_values[i, i, :]
+            if bs > 1:
+                basis_values[b*batch_size:(b+1)*batch_size, :, :] = np.swapaxes(np.diagonal(all_values,axis1=0, axis2=1), 0, 2)
             else:
-                # Values have shape (num_cells, num_points, bs, num_dofs*bs)
-                for i in range(len(cell_batch)):
-                    basis_values[b * batch_size + i] = sum(
-                        all_values[i, i, j, :] for j in range(bs)
-                    )
-    else:
-        basis_values = np.zeros((0, num_dofs), dtype=dolfinx.default_scalar_type)
+                basis_values[b*batch_size:(b+1)*batch_size, :, :] = np.diagonal(all_values, axis1=0, axis2=1).T.reshape(-1, basis_values.shape[1], basis_values.shape[2])
     return basis_values
 
 
