@@ -118,7 +118,7 @@ def test_naive_trace(use_petsc, family, degree, curved_line, unit_cube):
 
     if family == "Quadrature":
         el = basix.ufl.quadrature_element(
-            line.basix_cell(), value_shape=(), degree=degree
+            curved_line.basix_cell(), value_shape=(), degree=degree
         )
     else:
         el = (family, degree)
