@@ -111,19 +111,17 @@ def box(request):
 
 
 @pytest.mark.parametrize("use_petsc", [True, False])
-@pytest.mark.parametrize("family", ["DG", "Quadrature"])
+@pytest.mark.parametrize("family", ["DG", "Quadrature", "P"])
 @pytest.mark.parametrize("degree", [1, 2, 4])
 def test_naive_trace(use_petsc, family, degree, curved_line, unit_cube):
     V = dolfinx.fem.functionspace(unit_cube, ("Lagrange", 1))
 
-    if family == "DG":
-        el = ("DG", degree)
-    elif family == "Quadrature":
+    if family == "Quadrature":
         el = basix.ufl.quadrature_element(
             curved_line.basix_cell(), value_shape=(), degree=degree
         )
     else:
-        raise NotImplementedError(f"Test for {family=} not implemented")
+        el = (family, degree)
     K_hat = dolfinx.fem.functionspace(curved_line, el)
 
     def f(x):
@@ -162,21 +160,19 @@ def test_naive_trace(use_petsc, family, degree, curved_line, unit_cube):
 
 
 @pytest.mark.parametrize("use_petsc", [True, False])
-@pytest.mark.parametrize("family", ["DG", "Quadrature"])
+@pytest.mark.parametrize("family", ["P", "DG", "Quadrature"])
 @pytest.mark.parametrize("degree", [2, 3])
 @pytest.mark.parametrize("case", [1, 2, 3, 4])
 @pytest.mark.parametrize("radius", [0.53, lambda x: x[2]])
 def test_circle_trace(use_petsc, family, degree, line, box, radius, case):
     V = dolfinx.fem.functionspace(box, ("Lagrange", 3))
 
-    if family == "DG":
-        el = ("DG", degree)
-    elif family == "Quadrature":
+    if family == "Quadrature":
         el = basix.ufl.quadrature_element(
             line.basix_cell(), value_shape=(), degree=degree
         )
     else:
-        raise NotImplementedError(f"Test for {family=} not implemented")
+        el = (family, degree)
     K_hat = dolfinx.fem.functionspace(line, el)
 
     def f(x):
