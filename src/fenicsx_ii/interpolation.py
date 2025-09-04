@@ -224,4 +224,4 @@ def create_interpolation_matrix(
                     )
                     dofs_visited[local_k_dofs[j * K_bs + b]] = True
     finalize(A)
-    return A
+    return A, new_imap_K, new_imap_V
