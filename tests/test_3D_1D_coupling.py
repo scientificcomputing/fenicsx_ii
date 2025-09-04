@@ -6,6 +6,121 @@ import ufl
 import basix.ufl
 from fenicsx_ii import Circle, NaiveTrace, create_interpolation_matrix
 import dolfinx.fem.petsc
+from typing import Optional
+
+class Projector:
+    """
+    Projector for a given function.
+    Solves Ax=b, where
+
+    .. highlight:: python
+    .. code-block:: python
+
+        u, v = ufl.TrialFunction(Space), ufl.TestFunction(space)
+        dx = ufl.Measure("dx", metadata=metadata)
+        A = inner(u, v) * dx
+        b = inner(function, v) * dx(metadata=metadata)
+
+    Args:
+        function: UFL expression of function to project
+        space: Space to project function into
+        petsc_options: Options to pass to PETSc
+        jit_options: Options to pass to just in time compiler
+        form_compiler_options: Options to pass to the form compiler
+        metadata: Data to pass to the integration measure
+    """
+
+    _A: PETSc.Mat  # The mass matrix
+    _b: PETSc.Vec  # The rhs vector
+    _lhs: dolfinx.fem.Form  # The compiled form for the mass matrix
+    _ksp: PETSc.KSP  # The PETSc solver
+    _x: dolfinx.fem.Function  # The solution vector
+    _dx: ufl.Measure  # Integration measure
+
+    def __init__(
+        self,
+        space: dolfinx.fem.FunctionSpace,
+        petsc_options: Optional[dict] = None,
+        jit_options: Optional[dict] = None,
+        form_compiler_options: Optional[dict] = None,
+        metadata: Optional[dict] = None,
+    ):
+        petsc_options = {} if petsc_options is None else petsc_options
+        jit_options = {} if jit_options is None else jit_options
+        form_compiler_options = (
+            {} if form_compiler_options is None else form_compiler_options
+        )
+
+        # Assemble projection matrix once
+        u = ufl.TrialFunction(space)
+        v = ufl.TestFunction(space)
+        self._dx = ufl.Measure("dx", domain=space.mesh, metadata=metadata)
+        a = ufl.inner(u, v) * self._dx(metadata=metadata)
+        self._lhs = dolfinx.fem.form(
+            a, jit_options=jit_options, form_compiler_options=form_compiler_options
+        )
+        self._A = dolfinx.fem.petsc.assemble_matrix(self._lhs)
+        self._A.assemble()
+
+        # Create vectors to store right hand side and the solution
+        self._x = dolfinx.fem.Function(space)
+        self._b = dolfinx.fem.Function(space)
+
+        # Create Krylov Subspace solver
+        self._ksp = PETSc.KSP().create(space.mesh.comm)
+        self._ksp.setOperators(self._A)
+
+        # Set PETSc options
+        prefix = f"projector_{id(self)}"
+        opts = PETSc.Options()
+        opts.prefixPush(prefix)
+        for k, v in petsc_options.items():
+            opts[k] = v
+        opts.prefixPop()
+        self._ksp.setFromOptions()
+        for opt in opts.getAll().keys():
+            del opts[opt]
+
+        # Set matrix and vector PETSc options
+        self._A.setOptionsPrefix(prefix)
+        self._A.setFromOptions()
+        self._b.x.petsc_vec.setOptionsPrefix(prefix)
+        self._b.x.petsc_vec.setFromOptions()
+
+    def reassemble_lhs(self):
+        dolfinx.fem.petsc.assemble_matrix(self._A, self._lhs)
+        self._A.assemble()
+
+    def assemble_rhs(self, h: ufl.core.expr.Expr):
+        """
+        Assemble the right hand side of the problem
+        """
+        v = ufl.TestFunction(self._b.function_space)
+        rhs = ufl.inner(h, v) * self._dx
+        rhs_compiled = dolfinx.fem.form(rhs)
+        self._b.x.array[:] = 0.0
+        dolfinx.fem.petsc.assemble_vector(self._b.x.petsc_vec, rhs_compiled)
+        self._b.x.petsc_vec.ghostUpdate(
+            addv=PETSc.InsertMode.ADD_VALUES, mode=PETSc.ScatterMode.REVERSE
+        )
+        self._b.x.petsc_vec.ghostUpdate(
+            addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD
+        )
+
+    def project(self, h: ufl.core.expr.Expr) -> dolfinx.fem.Function:
+        """
+        Compute projection using a PETSc KSP solver
+
+        Args:
+            assemble_rhs: Re-assemble RHS and re-apply boundary conditions if true
+        """
+        self.assemble_rhs(h)
+        self._ksp.solve(self._b.x.petsc_vec, self._x.x.petsc_vec)
+        return self._x
+
+    def __del__(self):
+        self._A.destroy()
+        self._ksp.destroy()
 
 M = 15
 N = 53
@@ -67,9 +182,9 @@ z = ufl.TrialFunction(W)
 dx_3D = ufl.Measure("dx", domain=volume)
 dx_1D = ufl.Measure("dx", domain=line_mesh)
 
-k = dolfinx.fem.Constant(volume, 10.)
-sigma = dolfinx.fem.Constant(line_mesh, 0.2)
-
+k = dolfinx.fem.Constant(volume, 2.)
+sigma = dolfinx.fem.Constant(line_mesh, 2.)
+gamma = 100 # Coupling strength
 a00 = k * ufl.inner(ufl.grad(u), ufl.grad(v)) * dx_3D
 a11 = sigma * ufl.inner(ufl.grad(p), ufl.grad(q)) * dx_1D
 a01 = ufl.inner(z, q) * dx_1D
@@ -120,6 +235,18 @@ in_dofs = dolfinx.fem.locate_dofs_topological(Q, line_mesh.topology.dim-1, in_fa
 out_facets = dolfinx.mesh.locate_entities_boundary(line_mesh, line_mesh.topology.dim - 1, bc_out)
 out_dofs = dolfinx.fem.locate_dofs_topological(Q, line_mesh.topology.dim-1, out_facets)
 
+DG_line = dolfinx.fem.functionspace(line_mesh, ("DG", 0))
+num_lines = line_mesh.topology.index_map(line_mesh.topology.dim).size_local
+length_func = dolfinx.fem.Function(DG_line)
+length_func.x.array[:num_lines] = line_mesh.h(line_mesh.topology.dim, np.arange(num_lines, dtype=np.int32))
+length_func.x.scatter_forward()
+proj = Projector(Q)
+vec = proj.project(1/length_func)
+diag = A11.copy()
+diag.zeroEntries()
+diag.setDiagonal(vec.x.petsc_vec)
+diag.assemble()
+
 # def left(x):
 #     return np.isclose(x[0], 0.0)
 # volume_facets = dolfinx.mesh.locate_entities_boundary(volume, volume.topology.dim - 1, left)
@@ -140,7 +267,16 @@ for bc in bcs:
     A11.zeroRowsLocal(dofs, diag=1)
 
 D = C.copy()
-A_block = PETSc.Mat().createNest([[A00, D.transpose()], [C, A11]])
+D.transpose()
+
+A00_coupling = D.matMult(diag.matMult(C))
+A00.axpy(gamma, A00_coupling)
+
+D.scale(-gamma)
+C.scale(-gamma)
+A11.scale(gamma)
+A_block = PETSc.Mat().createNest([[A00, D], [C, A11]])
+
 
 dolfinx.fem.petsc.set_bc(b1, bcs)
 b0.ghostUpdate(addv=PETSc.InsertMode.INSERT_VALUES,
@@ -166,6 +302,9 @@ pc.setFactorSolverType("mumps")
 ksp.setErrorIfNotConverged(True)
 u_vec = b.duplicate()
 ksp.solve(b, u_vec)
+
+
+
 #u_vec.array_w[:] = z
 
 # cv = ksp.getConvergedReason()
@@ -175,7 +314,8 @@ ph = dolfinx.fem.Function(Q)
 dolfinx.fem.petsc.assign(u_vec, [uh, ph])
 ph.x.scatter_forward()
 uh.x.scatter_forward()
-
+uh.name = "u_3D"
+ph.name = "p_1D"
 
 with dolfinx.io.VTXWriter(volume.comm, "u_3D.bp", [uh]) as vtx:
     vtx.write(0.0)
