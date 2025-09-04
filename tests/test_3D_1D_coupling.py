@@ -7,8 +7,8 @@ import basix.ufl
 from fenicsx_ii import Circle, NaiveTrace, create_interpolation_matrix
 import dolfinx.fem.petsc
 
-M = 3
-N = 12
+M = 15
+N = 53
 volume = dolfinx.mesh.create_unit_cube(MPI.COMM_WORLD, M, M, M)
 volume.name = "volume"
 
@@ -55,7 +55,7 @@ v = ufl.TestFunction(V)
 p = ufl.TrialFunction(Q)
 q = ufl.TestFunction(Q)
 
-q_degree = 3
+q_degree = 5
 q_el = basix.ufl.quadrature_element(
             line_mesh.basix_cell(), value_shape=(), degree=q_degree
         )
@@ -67,8 +67,8 @@ z = ufl.TrialFunction(W)
 dx_3D = ufl.Measure("dx", domain=volume)
 dx_1D = ufl.Measure("dx", domain=line_mesh)
 
-k = dolfinx.fem.Constant(volume, 2.)
-sigma = dolfinx.fem.Constant(line_mesh, 2.)
+k = dolfinx.fem.Constant(volume, 10.)
+sigma = dolfinx.fem.Constant(line_mesh, 0.2)
 
 a00 = k * ufl.inner(ufl.grad(u), ufl.grad(v)) * dx_3D
 a11 = sigma * ufl.inner(ufl.grad(p), ufl.grad(q)) * dx_1D
@@ -85,7 +85,7 @@ A10.assemble()
 
 R = 0.1
 restriction = Circle(line_mesh, R, degree=10)
-restriction = NaiveTrace(line_mesh)
+#restriction = NaiveTrace(line_mesh)
 
 T, imap_K, imap_V = create_interpolation_matrix(V, W, restriction, use_petsc=True)
 C = A10.matMult(T)
@@ -96,7 +96,7 @@ col_map = PETSc.LGMap().create(global_V_map, bsize=V.dofmap.index_map_bs, comm=V
 C.setLGMap(row_map, col_map)
 
 x = ufl.SpatialCoordinate(volume)
-f = x[0]
+f = dolfinx.fem.Constant(volume, 0.0)#x[0]
 L0 = f * v * dx_3D
 L1 = dolfinx.fem.Constant(line_mesh, 0.0) * q * dx_1D
 b0 = dolfinx.fem.petsc.assemble_vector(dolfinx.fem.form(L0))
@@ -119,6 +119,18 @@ in_facets = dolfinx.mesh.locate_entities_boundary(line_mesh, line_mesh.topology.
 in_dofs = dolfinx.fem.locate_dofs_topological(Q, line_mesh.topology.dim-1, in_facets)
 out_facets = dolfinx.mesh.locate_entities_boundary(line_mesh, line_mesh.topology.dim - 1, bc_out)
 out_dofs = dolfinx.fem.locate_dofs_topological(Q, line_mesh.topology.dim-1, out_facets)
+
+# def left(x):
+#     return np.isclose(x[0], 0.0)
+# volume_facets = dolfinx.mesh.locate_entities_boundary(volume, volume.topology.dim - 1, left)
+# volume_dofs = dolfinx.fem.locate_dofs_topological(V, volume.topology.dim - 1, volume_facets)
+# bc_volume = dolfinx.fem.dirichletbc(dolfinx.fem.Constant(volume, 1.0), volume_dofs, V)
+# bc_3D = [bc_volume]
+# for bc in bc_3D:
+#     dofs, lz = bc._cpp_object.dof_indices()
+#     A00.zeroRowsLocal(dofs, diag=1)
+# dolfinx.fem.petsc.set_bc(b0, bc_3D)    
+
 bc_in = dolfinx.fem.dirichletbc(V_in, in_dofs, Q)
 bc_out = dolfinx.fem.dirichletbc(V_out, out_dofs, Q)
 bcs = [bc_in, bc_out]
@@ -126,7 +138,9 @@ for bc in bcs:
     dofs, lz = bc._cpp_object.dof_indices()
     C.zeroRowsLocal(dofs, diag=0)
     A11.zeroRowsLocal(dofs, diag=1)
-A_block = PETSc.Mat().createNest([[A00, None], [C, A11]])
+
+D = C.copy()
+A_block = PETSc.Mat().createNest([[A00, D.transpose()], [C, A11]])
 
 dolfinx.fem.petsc.set_bc(b1, bcs)
 b0.ghostUpdate(addv=PETSc.InsertMode.INSERT_VALUES,
@@ -134,6 +148,13 @@ b0.ghostUpdate(addv=PETSc.InsertMode.INSERT_VALUES,
 b1.ghostUpdate(addv=PETSc.InsertMode.INSERT_VALUES,
               mode=PETSc.ScatterMode.FORWARD)
 b = PETSc.Vec().createNest([b0, b1])
+
+# a_dense = A_block.convert("dense")[:,:]
+# b_ = b.array
+# z = np.linalg.solve(a_dense, b_)
+# import matplotlib.pyplot as plt
+# plt.spy(a_dense)
+# plt.savefig("test.png")
 
 
 ksp = PETSc.KSP().create(volume.comm)
@@ -145,14 +166,16 @@ pc.setFactorSolverType("mumps")
 ksp.setErrorIfNotConverged(True)
 u_vec = b.duplicate()
 ksp.solve(b, u_vec)
-cv = ksp.getConvergedReason()
-print(f"Convergence reason: {cv}")
+#u_vec.array_w[:] = z
+
+# cv = ksp.getConvergedReason()
+#print(f"Convergence reason: {cv}")
 uh = dolfinx.fem.Function(V)
 ph = dolfinx.fem.Function(Q)
 dolfinx.fem.petsc.assign(u_vec, [uh, ph])
 ph.x.scatter_forward()
 uh.x.scatter_forward()
-#breakpoint()
+
 
 with dolfinx.io.VTXWriter(volume.comm, "u_3D.bp", [uh]) as vtx:
     vtx.write(0.0)
