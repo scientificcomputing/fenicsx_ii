@@ -263,22 +263,7 @@ out_dofs = dolfinx.fem.locate_dofs_topological(
     Q, line_mesh.topology.dim - 1, out_facets
 )
 
-# DG_line = dolfinx.fem.functionspace(line_mesh, ("DG", 0))
-# num_lines = line_mesh.topology.index_map(line_mesh.topology.dim).size_local
-# length_func = dolfinx.fem.Function(DG_line)
-# length_func.x.array[:num_lines] = line_mesh.h(
-#     line_mesh.topology.dim, np.arange(num_lines, dtype=np.int32)
-# )
-# length_func.x.scatter_forward()
-# proj = Projector(Q)
-# vec = proj.project(1 / length_func)
-# diag = A11.copy()
-# diag.zeroEntries()
-# diag.setDiagonal(vec.x.petsc_vec)
-# diag.assemble()
-
-
-restriction_test = Circle(line_mesh, R, degree=10)  # NaiveTrace(line_mesh)
+restriction_test = NaiveTrace(line_mesh)
 P, imap_K_n, imap_V_n = create_interpolation_matrix(
     V, W, restriction_test, use_petsc=True
 )
