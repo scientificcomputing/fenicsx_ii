@@ -9,6 +9,24 @@ import dolfinx.fem.petsc
 from typing import Optional
 
 
+def assign_LG_map(
+    C: PETSc.Mat,
+    row_map: dolfinx.common.IndexMap,
+    col_map: dolfinx.common.IndexMap,
+    row_bs: int,
+    col_bs: int,
+):
+    global_row_map = row_map.local_to_global(
+        np.arange(row_map.size_local + row_map.num_ghosts, dtype=np.int32)
+    ).astype(PETSc.IntType)
+    global_col_map = col_map.local_to_global(
+        np.arange(col_map.size_local + col_map.num_ghosts, dtype=np.int32)
+    ).astype(PETSc.IntType)
+    row_map = PETSc.LGMap().create(global_row_map, bsize=row_bs, comm=row_map.comm)
+    col_map = PETSc.LGMap().create(global_col_map, bsize=col_bs, comm=col_map.comm)
+    C.setLGMap(row_map, col_map)
+
+
 class Projector:
     """
     Projector for a given function.
@@ -124,10 +142,10 @@ class Projector:
         self._ksp.destroy()
 
 
-M = 27
-N = 55
+M = 19
+N = 10
 volume = dolfinx.mesh.create_unit_cube(
-    MPI.COMM_WORLD, M, M, M, cell_type=dolfinx.mesh.CellType.hexahedron
+    MPI.COMM_WORLD, M, M, M, cell_type=dolfinx.mesh.CellType.tetrahedron
 )
 volume.name = "volume"
 
@@ -174,7 +192,7 @@ v = ufl.TestFunction(V)
 p = ufl.TrialFunction(Q)
 q = ufl.TestFunction(Q)
 
-q_degree = 5
+q_degree = 2
 q_el = basix.ufl.quadrature_element(
     line_mesh.basix_cell(), value_shape=(), degree=q_degree
 )
@@ -188,41 +206,30 @@ dx_1D = ufl.Measure("dx", domain=line_mesh)
 
 k = dolfinx.fem.Constant(volume, 2.0)
 sigma = dolfinx.fem.Constant(line_mesh, 2.0)
-gamma = 10  # Coupling strength
+gamma = 100  # Coupling strength
 a00 = k * ufl.inner(ufl.grad(u), ufl.grad(v)) * dx_3D
 a11 = sigma * ufl.inner(ufl.grad(p), ufl.grad(q)) * dx_1D
-a01 = ufl.inner(z, q) * dx_1D
-
+a10 = ufl.inner(z, q) * dx_1D
+a01 = ufl.inner(p, w) * dx_1D
 
 A00 = dolfinx.fem.petsc.assemble_matrix(dolfinx.fem.form(a00))
 A00.assemble()
 A11 = dolfinx.fem.petsc.assemble_matrix(dolfinx.fem.form(a11))
 A11.assemble()
-A10 = dolfinx.fem.petsc.assemble_matrix(dolfinx.fem.form(a01))
+A10 = dolfinx.fem.petsc.assemble_matrix(dolfinx.fem.form(a10))
 A10.assemble()
+A01 = dolfinx.fem.petsc.assemble_matrix(dolfinx.fem.form(a01))
+A01.assemble()
 
-
-R = 0.05
-restriction = Circle(line_mesh, R, degree=10)
-# restriction = NaiveTrace(line_mesh)
-
-T, imap_K, imap_V = create_interpolation_matrix(V, W, restriction, use_petsc=True)
+R = 0.01
+# Create restriction operator for trial space
+restriction_trial = Circle(line_mesh, R, degree=10)
+T, imap_K, imap_V = create_interpolation_matrix(V, W, restriction_trial, use_petsc=True)
 C = A10.matMult(T)
-global_V_map = imap_V.local_to_global(
-    np.arange(imap_V.size_local + imap_V.num_ghosts, dtype=np.int32)
-).astype(PETSc.IntType)
-global_Q_map = Q.dofmap.index_map.local_to_global(
-    np.arange(
-        Q.dofmap.index_map.size_local + Q.dofmap.index_map.num_ghosts, dtype=np.int32
-    )
-).astype(PETSc.IntType)
-row_map = PETSc.LGMap().create(
-    global_Q_map, bsize=Q.dofmap.index_map_bs, comm=Q.mesh.comm
+assign_LG_map(
+    C, Q.dofmap.index_map, imap_V, Q.dofmap.index_map_bs, V.dofmap.index_map_bs
 )
-col_map = PETSc.LGMap().create(
-    global_V_map, bsize=V.dofmap.index_map_bs, comm=V.mesh.comm
-)
-C.setLGMap(row_map, col_map)
+
 
 x = ufl.SpatialCoordinate(volume)
 f = dolfinx.fem.Constant(volume, 0.0)  # x[0]
@@ -256,40 +263,50 @@ out_dofs = dolfinx.fem.locate_dofs_topological(
     Q, line_mesh.topology.dim - 1, out_facets
 )
 
-DG_line = dolfinx.fem.functionspace(line_mesh, ("DG", 0))
-num_lines = line_mesh.topology.index_map(line_mesh.topology.dim).size_local
-length_func = dolfinx.fem.Function(DG_line)
-length_func.x.array[:num_lines] = line_mesh.h(
-    line_mesh.topology.dim, np.arange(num_lines, dtype=np.int32)
+# DG_line = dolfinx.fem.functionspace(line_mesh, ("DG", 0))
+# num_lines = line_mesh.topology.index_map(line_mesh.topology.dim).size_local
+# length_func = dolfinx.fem.Function(DG_line)
+# length_func.x.array[:num_lines] = line_mesh.h(
+#     line_mesh.topology.dim, np.arange(num_lines, dtype=np.int32)
+# )
+# length_func.x.scatter_forward()
+# proj = Projector(Q)
+# vec = proj.project(1 / length_func)
+# diag = A11.copy()
+# diag.zeroEntries()
+# diag.setDiagonal(vec.x.petsc_vec)
+# diag.assemble()
+
+
+restriction_test = Circle(line_mesh, R, degree=10)  # NaiveTrace(line_mesh)
+P, imap_K_n, imap_V_n = create_interpolation_matrix(
+    V, W, restriction_test, use_petsc=True
 )
-length_func.x.scatter_forward()
-proj = Projector(Q)
-vec = proj.project(1 / length_func)
-diag = A11.copy()
-diag.zeroEntries()
-diag.setDiagonal(vec.x.petsc_vec)
-diag.assemble()
+Pt = P.copy()
+Pt.transpose()
 
-# def left(x):
-#     return np.isclose(x[0], 0.0)
-# volume_facets = dolfinx.mesh.locate_entities_boundary(volume, volume.topology.dim - 1, left)
-# volume_dofs = dolfinx.fem.locate_dofs_topological(V, volume.topology.dim - 1, volume_facets)
-# bc_volume = dolfinx.fem.dirichletbc(dolfinx.fem.Constant(volume, 1.0), volume_dofs, V)
-# bc_3D = [bc_volume]
-# for bc in bc_3D:
-#     dofs, lz = bc._cpp_object.dof_indices()
-#     A00.zeroRowsLocal(dofs, diag=1)
-# dolfinx.fem.petsc.set_bc(b0, bc_3D)
+a00_W = dolfinx.fem.form(ufl.inner(z, w) * dx_1D)
+A00_W = dolfinx.fem.petsc.assemble_matrix(a00_W)
+A00_W.assemble()
+Z = Pt.matMult(A00_W).matMult(T)
+assign_LG_map(
+    Z,
+    V.dofmap.index_map,
+    V.dofmap.index_map,
+    V.dofmap.index_map_bs,
+    V.dofmap.index_map_bs,
+)
+A00.axpy(gamma, Z)
 
-
-D = C.copy()
-D.transpose()
-
-A00_coupling = D.matMult(diag.matMult(C))
-A00.axpy(gamma, A00_coupling)
-
+D = Pt.matMult(A01)
 D.scale(-gamma)
-C.scale(-gamma)
+# A00_coupling = D.matMult(diag.matMult(C))
+# A00.axpy(gamma, A00_coupling)
+# D = C.copy()
+# D.transpose()
+# D.scale(-gamma)
+
+C.scale(gamma)
 A11.scale(gamma)
 
 bc_in = dolfinx.fem.dirichletbc(V_in, in_dofs, Q)
