@@ -1,11 +1,13 @@
 from mpi4py import MPI
 from petsc4py import PETSc
-import numpy as np
-import dolfinx
-import ufl
+
 import basix.ufl
-from fenicsx_ii import Circle, NaiveTrace, create_interpolation_matrix
+import dolfinx
 import dolfinx.fem.petsc
+import numpy as np
+import ufl
+
+from fenicsx_ii import Circle, NaiveTrace, create_interpolation_matrix
 
 
 def assign_LG_map(
@@ -69,8 +71,8 @@ def dirichlet_boundary(x):
     return np.isclose(x[0], 0.0) & np.isclose(x[0], 1.0)
 
 
-V = dolfinx.fem.functionspace(volume, ("Lagrange", 2))
-Q = dolfinx.fem.functionspace(line_mesh, ("Lagrange", 2))
+V = dolfinx.fem.functionspace(volume, ("Lagrange", 1))
+Q = dolfinx.fem.functionspace(line_mesh, ("Lagrange", 1))
 u = ufl.TrialFunction(V)
 v = ufl.TestFunction(V)
 p = ufl.TrialFunction(Q)
@@ -105,7 +107,7 @@ A10.assemble()
 A01 = dolfinx.fem.petsc.assemble_matrix(dolfinx.fem.form(a01))
 A01.assemble()
 
-R = 0.05
+R = 0.3
 # Create restriction operator for trial space
 restriction_trial = Circle(line_mesh, R, degree=10)
 T, imap_K, imap_V = create_interpolation_matrix(V, W, restriction_trial, use_petsc=True)
