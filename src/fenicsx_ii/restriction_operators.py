@@ -10,7 +10,7 @@ import numpy.typing as npt
 from .quadrature import Quadrature
 from .utils import get_cell_normals, get_physical_points
 
-__all__ = ["Circle", "NaiveTrace", "ReductionOperator"]
+__all__ = ["Circle", "PointwiseTrace", "ReductionOperator"]
 
 
 class ReductionOperator(typing.Protocol):
@@ -26,7 +26,7 @@ class ReductionOperator(typing.Protocol):
     def num_points(self) -> int: ...
 
 
-class NaiveTrace:
+class PointwiseTrace:
     def __init__(self, mesh: dolfinx.mesh.Mesh):
         """Naive trace on a 1D line segment.
 

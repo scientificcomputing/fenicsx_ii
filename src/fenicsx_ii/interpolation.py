@@ -4,6 +4,7 @@ from mpi4py import MPI as _MPI
 
 import dolfinx
 import numpy as np
+from dolfinx.common import IndexMap as _im
 
 from .interpolation_utils import create_extended_indexmap, evaluate_basis_function
 from .restriction_operators import ReductionOperator
@@ -16,7 +17,7 @@ def create_interpolation_matrix(
     red_op: ReductionOperator,
     tol: float = 1.0e-8,
     use_petsc: bool = False,
-) -> "PETSc.Mat" | dolfinx.la.MatrixCSR:  # type: ignore[name-defined] # noqa: F821
+) -> tuple["PETSc.Mat" | dolfinx.la.MatrixCSR, _im, _im]:  # type: ignore[name-defined] # noqa: F821
     """
     Create an interpolation matrix from `V` to `K` with a specific reduction operator
     applied to the interpolation points of `K`.
@@ -49,8 +50,8 @@ def create_interpolation_matrix(
     interpolation_coordinates = quad_points.reshape(-1, mesh_to.geometry.dim)
     num_average_qp = red_op.num_points
 
-    point_ownership = dolfinx.cpp.geometry.determine_point_ownership(
-        mesh_from._cpp_object, interpolation_coordinates, tol
+    point_ownership = dolfinx.geometry.determine_point_ownership(
+        mesh_from, interpolation_coordinates, padding=tol
     )
     cells_on_proc = (
         point_ownership.dest_cells
@@ -62,7 +63,7 @@ def create_interpolation_matrix(
         point_ownership.src_owner
     )  # For IP in 1D grid, what process has taken ownership
     assert (ip_sender >= 0).all()
-    ip_owner = point_ownership.dest_owners  # For received data, who sent it
+    ip_owner = point_ownership.dest_owner  # For received data, who sent it
 
     num_dofs_per_cell_K = K.dofmap.list.shape[1]
     incoming_K_dofs, incoming_K_owners = send_dofs_to_other_process(
@@ -224,4 +225,4 @@ def create_interpolation_matrix(
                     )
                     dofs_visited[local_k_dofs[j * K_bs + b]] = True
     finalize(A)
-    return A
+    return A, new_imap_K, new_imap_V
