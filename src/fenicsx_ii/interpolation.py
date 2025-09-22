@@ -4,6 +4,7 @@ from mpi4py import MPI as _MPI
 
 import dolfinx
 import numpy as np
+from dolfinx.common import IndexMap as _im
 
 from .interpolation_utils import create_extended_indexmap, evaluate_basis_function
 from .restriction_operators import ReductionOperator
@@ -16,7 +17,7 @@ def create_interpolation_matrix(
     red_op: ReductionOperator,
     tol: float = 1.0e-8,
     use_petsc: bool = False,
-) -> "PETSc.Mat" | dolfinx.la.MatrixCSR:  # type: ignore[name-defined] # noqa: F821
+) -> tuple["PETSc.Mat" | dolfinx.la.MatrixCSR, _im, _im]:  # type: ignore[name-defined] # noqa: F821
     """
     Create an interpolation matrix from `V` to `K` with a specific reduction operator
     applied to the interpolation points of `K`.

@@ -11,7 +11,7 @@ from fenicsx_ii import Circle, PointwiseTrace, create_interpolation_matrix
 
 
 def assign_LG_map(
-    C: PETSc.Mat,
+    C: PETSc.Mat,  # type: ignore
     row_map: dolfinx.common.IndexMap,
     col_map: dolfinx.common.IndexMap,
     row_bs: int,
@@ -19,13 +19,13 @@ def assign_LG_map(
 ):
     global_row_map = row_map.local_to_global(
         np.arange(row_map.size_local + row_map.num_ghosts, dtype=np.int32)
-    ).astype(PETSc.IntType)
+    ).astype(PETSc.IntType)  # type: ignore
     global_col_map = col_map.local_to_global(
         np.arange(col_map.size_local + col_map.num_ghosts, dtype=np.int32)
-    ).astype(PETSc.IntType)
-    row_map = PETSc.LGMap().create(global_row_map, bsize=row_bs, comm=row_map.comm)
-    col_map = PETSc.LGMap().create(global_col_map, bsize=col_bs, comm=col_map.comm)
-    C.setLGMap(row_map, col_map)
+    ).astype(PETSc.IntType)  # type: ignore
+    row_map = PETSc.LGMap().create(global_row_map, bsize=row_bs, comm=row_map.comm)  # type: ignore
+    col_map = PETSc.LGMap().create(global_col_map, bsize=col_bs, comm=col_map.comm)  # type: ignore
+    C.setLGMap(row_map, col_map)  # type: ignore
 
 
 M = 33
@@ -123,8 +123,8 @@ L0 = f * v * dx_3D
 L1 = dolfinx.fem.Constant(line_mesh, 0.0) * q * dx_1D
 b0 = dolfinx.fem.petsc.assemble_vector(dolfinx.fem.form(L0))
 b1 = dolfinx.fem.petsc.assemble_vector(dolfinx.fem.form(L1))
-b0.ghostUpdate(addv=PETSc.InsertMode.ADD_VALUES, mode=PETSc.ScatterMode.REVERSE)
-b1.ghostUpdate(addv=PETSc.InsertMode.ADD_VALUES, mode=PETSc.ScatterMode.REVERSE)
+b0.ghostUpdate(addv=PETSc.InsertMode.ADD_VALUES, mode=PETSc.ScatterMode.REVERSE)  # type: ignore
+b1.ghostUpdate(addv=PETSc.InsertMode.ADD_VALUES, mode=PETSc.ScatterMode.REVERSE)  # type: ignore
 
 V_in = dolfinx.fem.Constant(line_mesh, 0.0)
 V_out = dolfinx.fem.Constant(line_mesh, 3.0)
@@ -153,7 +153,7 @@ restriction_test = PointwiseTrace(line_mesh)
 P, imap_K_n, imap_V_n = create_interpolation_matrix(
     V, W, restriction_test, use_petsc=True
 )
-Pt = P.copy()
+Pt = P.copy()  # type: ignore
 Pt.transpose()
 
 a00_W = dolfinx.fem.form(ufl.inner(z, w) * dx_1D)
@@ -174,24 +174,25 @@ D.scale(-gamma)
 C.scale(gamma)
 A11.scale(gamma)
 
-bc_in = dolfinx.fem.dirichletbc(V_in, in_dofs, Q)
-bc_out = dolfinx.fem.dirichletbc(V_out, out_dofs, Q)
-bcs = [bc_in, bc_out]
+bcs = [
+    dolfinx.fem.dirichletbc(V_in, in_dofs, Q),
+    dolfinx.fem.dirichletbc(V_out, out_dofs, Q),
+]
 for bc in bcs:
     dofs, lz = bc._cpp_object.dof_indices()
     C.zeroRowsLocal(dofs, diag=0)
     A11.zeroRowsLocal(dofs, diag=1)
 
-A_block = PETSc.Mat().createNest([[A00, D], [C, A11]])
+A_block = PETSc.Mat().createNest([[A00, D], [C, A11]])  # type: ignore
 
 
 dolfinx.fem.petsc.set_bc(b1, bcs)
-b0.ghostUpdate(addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD)
-b1.ghostUpdate(addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD)
-b = PETSc.Vec().createNest([b0, b1])
+b0.ghostUpdate(addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD)  # type: ignore
+b1.ghostUpdate(addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD)  # type: ignore
+b = PETSc.Vec().createNest([b0, b1])  # type: ignore
 
 
-ksp = PETSc.KSP().create(volume.comm)
+ksp = PETSc.KSP().create(volume.comm)  # type: ignore
 ksp.setOperators(A_block)
 ksp.setType("preonly")
 pc = ksp.getPC()

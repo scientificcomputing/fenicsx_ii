@@ -1,3 +1,4 @@
+from collections.abc import Sized
 from dataclasses import dataclass
 
 import basix
@@ -49,6 +50,7 @@ def compute_disk_quadrature(
         q_p_2D[:, 1] = q_p_scaled[:, 0]
         return q_w_scaled, q_p_2D
 
+    assert isinstance(qp, Sized)
     points = np.zeros((n * len(qp), 2))
     weights = np.zeros(n * len(qp))
     for i in range(1, n + 1):
