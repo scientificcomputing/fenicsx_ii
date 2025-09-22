@@ -1,8 +1,9 @@
-from fenicsx_ii.quadrature import compute_disk_quadrature, _eta
-import numpy as np
-import pytest
-import numpy.typing as npt
 import basix
+import numpy as np
+import numpy.typing as npt
+import pytest
+
+from fenicsx_ii.quadrature import _eta, compute_disk_quadrature
 
 
 def reference_coefficients(n: int) -> npt.NDArray[np.floating]:
