@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 import ufl
 
-from fenicsx_ii import Circle, NaiveTrace, create_interpolation_matrix
+from fenicsx_ii import Circle, PointwiseTrace, create_interpolation_matrix
 
 # Only run ghost mode parametrization in parallel
 if MPI.COMM_WORLD.size == 1:
@@ -131,9 +131,9 @@ def test_naive_trace(use_petsc, family, degree, curved_line, unit_cube):
     uh = dolfinx.fem.Function(V)
     uh.interpolate(f)
 
-    restriction = NaiveTrace(curved_line)
+    restriction = PointwiseTrace(curved_line)
     bh = dolfinx.fem.Function(K_hat)
-    A = create_interpolation_matrix(V, K_hat, restriction, use_petsc=use_petsc)
+    A, _, _ = create_interpolation_matrix(V, K_hat, restriction, use_petsc=use_petsc)
 
     if use_petsc:
         A.mult(uh.x.petsc_vec, bh.x.petsc_vec)
@@ -211,7 +211,7 @@ def test_circle_trace(use_petsc, family, degree, line, box, radius, case):
 
     bh = dolfinx.fem.Function(K_hat)
     use_petsc = False
-    A = create_interpolation_matrix(V, K_hat, restriction, use_petsc=use_petsc)
+    A, _, _ = create_interpolation_matrix(V, K_hat, restriction, use_petsc=use_petsc)
 
     if use_petsc:
         A.mult(uh.x.petsc_vec, bh.x.petsc_vec)
@@ -260,9 +260,9 @@ def test_naive_trace_vector(use_petsc, family, degree, curved_line, unit_cube):
     uh = dolfinx.fem.Function(V)
     uh.interpolate(f)
 
-    restriction = NaiveTrace(curved_line)
+    restriction = PointwiseTrace(curved_line)
     bh = dolfinx.fem.Function(K_hat)
-    A = create_interpolation_matrix(V, K_hat, restriction, use_petsc=use_petsc)
+    A, _, _ = create_interpolation_matrix(V, K_hat, restriction, use_petsc=use_petsc)
 
     if use_petsc:
         A.mult(uh.x.petsc_vec, bh.x.petsc_vec)

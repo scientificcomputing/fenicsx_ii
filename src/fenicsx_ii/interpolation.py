@@ -49,8 +49,8 @@ def create_interpolation_matrix(
     interpolation_coordinates = quad_points.reshape(-1, mesh_to.geometry.dim)
     num_average_qp = red_op.num_points
 
-    point_ownership = dolfinx.cpp.geometry.determine_point_ownership(
-        mesh_from._cpp_object, interpolation_coordinates, tol
+    point_ownership = dolfinx.geometry.determine_point_ownership(
+        mesh_from, interpolation_coordinates, padding=tol
     )
     cells_on_proc = (
         point_ownership.dest_cells
@@ -62,7 +62,7 @@ def create_interpolation_matrix(
         point_ownership.src_owner
     )  # For IP in 1D grid, what process has taken ownership
     assert (ip_sender >= 0).all()
-    ip_owner = point_ownership.dest_owners  # For received data, who sent it
+    ip_owner = point_ownership.dest_owner  # For received data, who sent it
 
     num_dofs_per_cell_K = K.dofmap.list.shape[1]
     incoming_K_dofs, incoming_K_owners = send_dofs_to_other_process(

@@ -7,7 +7,7 @@ import dolfinx.fem.petsc
 import numpy as np
 import ufl
 
-from fenicsx_ii import Circle, NaiveTrace, create_interpolation_matrix
+from fenicsx_ii import Circle, PointwiseTrace, create_interpolation_matrix
 
 
 def assign_LG_map(
@@ -107,7 +107,7 @@ A10.assemble()
 A01 = dolfinx.fem.petsc.assemble_matrix(dolfinx.fem.form(a01))
 A01.assemble()
 
-R = 0.3
+R = 0.01
 # Create restriction operator for trial space
 restriction_trial = Circle(line_mesh, R, degree=10)
 T, imap_K, imap_V = create_interpolation_matrix(V, W, restriction_trial, use_petsc=True)
@@ -149,7 +149,7 @@ out_dofs = dolfinx.fem.locate_dofs_topological(
     Q, line_mesh.topology.dim - 1, out_facets
 )
 
-restriction_test = NaiveTrace(line_mesh)
+restriction_test = PointwiseTrace(line_mesh)
 P, imap_K_n, imap_V_n = create_interpolation_matrix(
     V, W, restriction_test, use_petsc=True
 )
