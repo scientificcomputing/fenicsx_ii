@@ -28,10 +28,10 @@ def assign_LG_map(
     C.setLGMap(row_map, col_map)  # type: ignore
 
 
-M = 2**4
-N = 2*M
+M = 2**5
+N = 2 * M
 volume = dolfinx.mesh.create_unit_cube(
-    MPI.COMM_WORLD, M, M, 2*M, cell_type=dolfinx.mesh.CellType.tetrahedron
+    MPI.COMM_WORLD, M, M, 2 * M, cell_type=dolfinx.mesh.CellType.tetrahedron
 )
 volume.name = "volume"
 
@@ -90,11 +90,13 @@ Alpha1 = dolfinx.fem.Constant(volume, 0.02)
 Alpha0 = dolfinx.fem.Constant(volume, 0.01)
 alpha1 = dolfinx.fem.Constant(line_mesh, 2.0)
 alpha0 = dolfinx.fem.Constant(line_mesh, 0.01)
-beta = dolfinx.fem.Constant(line_mesh, 10.)  # Coupling strength
+beta = dolfinx.fem.Constant(line_mesh, 10.0)  # Coupling strength
 
 
-
-a00 = Alpha1 * ufl.inner(ufl.grad(u), ufl.grad(v)) * dx_3D + Alpha0 * ufl.inner(u, v) * dx_3D
+a00 = (
+    Alpha1 * ufl.inner(ufl.grad(u), ufl.grad(v)) * dx_3D
+    + Alpha0 * ufl.inner(u, v) * dx_3D
+)
 
 a01 = -beta * ufl.inner(p, w) * dx_1D
 a10 = -beta * ufl.inner(z, q) * dx_1D
@@ -111,7 +113,7 @@ A10.assemble()
 A01 = dolfinx.fem.petsc.assemble_matrix(dolfinx.fem.form(a01))
 A01.assemble()
 
-R = 0.04
+R = 0.2
 # Create restriction operator for trial space
 restriction_trial = Circle(line_mesh, R, degree=5)
 T, imap_K, imap_V = create_interpolation_matrix(V, W, restriction_trial, use_petsc=True)
@@ -127,9 +129,10 @@ P, imap_K_n, imap_V_n = create_interpolation_matrix(
 Pt = P.copy()  # type: ignore
 Pt.transpose()
 
-x = ufl.SpatialCoordinate(volume)
-#f = dolfinx.fem.Constant(volume, 0.0)  # x[0]
-f = dolfinx.fem.Constant(line_mesh, 2.0)
+x = ufl.SpatialCoordinate(line_mesh)
+# f = dolfinx.fem.Constant(volume, 0.0)  # x[0]
+f = ufl.sin(x[2])
+# f = dolfinx.fem.Constant(line_mesh, 2.0)
 
 L0 = f * w * dx_1D
 b0_1D = dolfinx.fem.petsc.assemble_vector(dolfinx.fem.form(L0))
@@ -166,7 +169,6 @@ b1.ghostUpdate(addv=PETSc.InsertMode.ADD_VALUES, mode=PETSc.ScatterMode.REVERSE)
 # )
 
 
-
 a00_W = dolfinx.fem.form(beta * ufl.inner(z, w) * dx_1D)
 A00_W = dolfinx.fem.petsc.assemble_matrix(a00_W)
 A00_W.assemble()
@@ -183,8 +185,8 @@ A00.axpy(1, Z)
 D = Pt.matMult(A01)
 
 bcs = [
-    #dolfinx.fem.dirichletbc(V_in, in_dofs, Q),
-    #dolfinx.fem.dirichletbc(V_out, out_dofs, Q),
+    # dolfinx.fem.dirichletbc(V_in, in_dofs, Q),
+    # dolfinx.fem.dirichletbc(V_out, out_dofs, Q),
 ]
 for bc in bcs:
     dofs, lz = bc._cpp_object.dof_indices()
