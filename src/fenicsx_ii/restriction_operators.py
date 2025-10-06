@@ -252,7 +252,8 @@ class Disk:
 
         # area of unit disk is pi R^2
         # Quadrature rule is made on a unit disk
-        scale = R * np.pi**2
-        tiled_scale = np.repeat(scale, self._xp.shape[0])
+        scale = np.pi * R**2
+        tiled_scale = np.repeat(R**2, self._xp.shape[0])
         weights = np.tile(self._w, x0.shape[0])
+        weights *= tiled_scale
         return xp, weights.reshape(x0.shape[0], -1), scale
