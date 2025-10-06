@@ -2,6 +2,7 @@ import basix
 import numpy as np
 import numpy.typing as npt
 import pytest
+import sympy as sp
 
 from fenicsx_ii.quadrature import _eta, compute_disk_quadrature
 

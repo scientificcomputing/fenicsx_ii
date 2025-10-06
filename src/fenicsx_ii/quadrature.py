@@ -5,7 +5,6 @@ import basix
 import numpy as np
 import numpy.typing as npt
 
-
 __all__ = ["Quadrature", "compute_disk_quadrature"]
 
 
@@ -27,6 +26,7 @@ def _eta(k, n):
 
 def _bounds(k, n):
     return -np.sqrt(1 - _eta(k, n) ** 2), np.sqrt(1 - _eta(k, n) ** 2)
+
 
 def rotation_matrix(
     n: npt.NDArray[np.floating],

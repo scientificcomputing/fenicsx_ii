@@ -7,7 +7,7 @@ import dolfinx
 import numpy as np
 import numpy.typing as npt
 
-from .quadrature import Quadrature, rotation_matrix, compute_disk_quadrature
+from .quadrature import Quadrature, compute_disk_quadrature, rotation_matrix
 from .utils import get_cell_normals, get_physical_points
 
 __all__ = ["Circle", "PointwiseTrace", "ReductionOperator"]
@@ -159,8 +159,6 @@ class Circle:
         return xp, weights.reshape(x0.shape[0], -1), scale
 
 
-
-
 class Disk:
     def __init__(
         self,
@@ -175,7 +173,7 @@ class Disk:
             raise NotImplementedError("Not implemented for curved meshes")
 
         self._mesh = mesh
-        
+
         # Compute quadrature points and weights on unit disk and pad for 3D
         xp, self._w = compute_disk_quadrature(degree)
         self._xp = np.zeros((xp.shape[0], 3), dtype=xp.dtype)
@@ -186,7 +184,6 @@ class Disk:
         else:
             self._radius = radius
 
-  
     @property
     def num_points(self):
         assert self._xp.shape[0] == len(self._w)
@@ -210,9 +207,7 @@ class Disk:
         assert normals_at_quadrature.shape[0] == x_coords.shape[0]
         assert normals_at_quadrature.shape[1] == x_coords.shape[1]
         points, weights, scales = self.quadrature(x_coords, normals_at_quadrature)
-        return Quadrature(
-            name="DiskAvg", points=points, weights=weights, scales=scales
-        )
+        return Quadrature(name="DiskAvg", points=points, weights=weights, scales=scales)
 
     def quadrature(
         self, x0: npt.NDArray[np.floating], normals: npt.NDArray[np.floating]
@@ -245,7 +240,7 @@ class Disk:
         R = self._radius(x0.T)
         Rot = rotation_matrix(normals)
         xp = np.tile(x0, self._xp.shape[0]).reshape(x0.shape[0], self._xp.shape[0], 3)
-        applied_rot = np.einsum("ijk,lk->ilj", Rot, self._xp)            
+        applied_rot = np.einsum("ijk,lk->ilj", Rot, self._xp)
         R_tiles = np.repeat(R, self._xp.shape[0]).reshape(x0.shape[0], -1)
 
         xp += np.einsum("ijk,ij->ijk", applied_rot, R_tiles)
