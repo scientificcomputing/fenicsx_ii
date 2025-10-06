@@ -5,6 +5,7 @@ import basix
 import numpy as np
 import numpy.typing as npt
 
+
 __all__ = ["Quadrature", "compute_disk_quadrature"]
 
 
@@ -26,6 +27,42 @@ def _eta(k, n):
 
 def _bounds(k, n):
     return -np.sqrt(1 - _eta(k, n) ** 2), np.sqrt(1 - _eta(k, n) ** 2)
+
+def rotation_matrix(
+    n: npt.NDArray[np.floating],
+) -> npt.NDArray[np.floating]:
+    """Compute the rotation matrix for circle with center(s) at x0, normal(s) n,
+    radius(es) R)"""
+    # Normalize normal vector
+    if n.ndim == 1:
+        n = n.reshape(-1, 3)
+    n = (n.T / np.linalg.norm(n, axis=1)).T
+
+    # Find a plane that is normal to n
+    ez = np.array([0, 0, 1])
+    axis = np.cross(ez, n)
+
+    axis_norm = np.linalg.norm(axis, axis=1)
+    axis[np.isclose(axis_norm, 0)] = ez
+    axis = axis / np.linalg.norm(axis, axis=1).reshape(-1, 1)
+
+    cos_theta = np.dot(n, ez)
+    sin_theta = np.sqrt(1 - cos_theta**2)
+    # Rotation matrices
+    Rot = np.broadcast_to(np.eye(3), (n.shape[0], 3, 3))
+    Rot = np.einsum("ijk,i->ijk", Rot, cos_theta)
+    smat = np.zeros((n.shape[0], 3, 3))
+    smat[:, 0, 1] = -axis[:, 2]
+    smat[:, 0, 2] = axis[:, 1]
+    smat[:, 1, 0] = axis[:, 2]
+    smat[:, 1, 2] = -axis[:, 0]
+    smat[:, 2, 0] = -axis[:, 1]
+    smat[:, 2, 1] = axis[:, 0]
+    Rot += np.einsum("ijk,i->ijk", smat, sin_theta)
+    outer_prod = np.einsum("ij,ik->ijk", axis, axis)
+    Rot += np.einsum("ijk,i->ijk", outer_prod, 1 - cos_theta)
+
+    return Rot
 
 
 def compute_disk_quadrature(
