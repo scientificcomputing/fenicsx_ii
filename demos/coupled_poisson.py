@@ -28,15 +28,15 @@ def assign_LG_map(
     C.setLGMap(row_map, col_map)  # type: ignore
 
 
-M = 33
-N = 100
+M = 2**4
+N = 2*M
 volume = dolfinx.mesh.create_unit_cube(
-    MPI.COMM_WORLD, M, M, M, cell_type=dolfinx.mesh.CellType.tetrahedron
+    MPI.COMM_WORLD, M, M, 2*M, cell_type=dolfinx.mesh.CellType.tetrahedron
 )
 volume.name = "volume"
 
-l_min = 0.25
-l_max = 0.75
+l_min = 0
+l_max = 1
 if MPI.COMM_WORLD.rank == 0:
     nodes = np.zeros((N, 3), dtype=np.float64)
     nodes[:, 0] = np.full(nodes.shape[0], 0.5)
@@ -67,10 +67,6 @@ with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "meshes.xdmf", "w") as xdmf:
     xdmf.write_mesh(line_mesh)
 
 
-def dirichlet_boundary(x):
-    return np.isclose(x[0], 0.0) & np.isclose(x[0], 1.0)
-
-
 V = dolfinx.fem.functionspace(volume, ("Lagrange", 1))
 Q = dolfinx.fem.functionspace(line_mesh, ("Lagrange", 1))
 u = ufl.TrialFunction(V)
@@ -90,13 +86,21 @@ z = ufl.TrialFunction(W)
 dx_3D = ufl.Measure("dx", domain=volume)
 dx_1D = ufl.Measure("dx", domain=line_mesh)
 
-k = dolfinx.fem.Constant(volume, 2.0)
-sigma = dolfinx.fem.Constant(line_mesh, 2.0)
-gamma = 100  # Coupling strength
-a00 = k * ufl.inner(ufl.grad(u), ufl.grad(v)) * dx_3D
-a11 = sigma * ufl.inner(ufl.grad(p), ufl.grad(q)) * dx_1D
-a10 = ufl.inner(z, q) * dx_1D
-a01 = ufl.inner(p, w) * dx_1D
+Alpha1 = dolfinx.fem.Constant(volume, 0.02)
+Alpha0 = dolfinx.fem.Constant(volume, 0.01)
+alpha1 = dolfinx.fem.Constant(line_mesh, 2.0)
+alpha0 = dolfinx.fem.Constant(line_mesh, 0.01)
+beta = dolfinx.fem.Constant(line_mesh, 10.)  # Coupling strength
+
+
+
+a00 = Alpha1 * ufl.inner(ufl.grad(u), ufl.grad(v)) * dx_3D + Alpha0 * ufl.inner(u, v) * dx_3D
+
+a01 = -beta * ufl.inner(p, w) * dx_1D
+a10 = -beta * ufl.inner(z, q) * dx_1D
+
+a11 = alpha1 * ufl.inner(ufl.grad(p), ufl.grad(q)) * dx_1D
+a11 += (alpha0 + beta) * ufl.inner(p, q) * dx_1D
 
 A00 = dolfinx.fem.petsc.assemble_matrix(dolfinx.fem.form(a00))
 A00.assemble()
@@ -116,39 +120,6 @@ assign_LG_map(
     C, Q.dofmap.index_map, imap_V, Q.dofmap.index_map_bs, V.dofmap.index_map_bs
 )
 
-
-x = ufl.SpatialCoordinate(volume)
-f = dolfinx.fem.Constant(volume, 0.0)  # x[0]
-L0 = f * v * dx_3D
-L1 = dolfinx.fem.Constant(line_mesh, 0.0) * q * dx_1D
-b0 = dolfinx.fem.petsc.assemble_vector(dolfinx.fem.form(L0))
-b1 = dolfinx.fem.petsc.assemble_vector(dolfinx.fem.form(L1))
-b0.ghostUpdate(addv=PETSc.InsertMode.ADD_VALUES, mode=PETSc.ScatterMode.REVERSE)  # type: ignore
-b1.ghostUpdate(addv=PETSc.InsertMode.ADD_VALUES, mode=PETSc.ScatterMode.REVERSE)  # type: ignore
-
-V_in = dolfinx.fem.Constant(line_mesh, 0.0)
-V_out = dolfinx.fem.Constant(line_mesh, 3.0)
-
-
-def bc_in(x):
-    return np.isclose(x[2], l_min)
-
-
-def bc_out(x):
-    return np.isclose(x[2], l_max)
-
-
-in_facets = dolfinx.mesh.locate_entities_boundary(
-    line_mesh, line_mesh.topology.dim - 1, bc_in
-)
-in_dofs = dolfinx.fem.locate_dofs_topological(Q, line_mesh.topology.dim - 1, in_facets)
-out_facets = dolfinx.mesh.locate_entities_boundary(
-    line_mesh, line_mesh.topology.dim - 1, bc_out
-)
-out_dofs = dolfinx.fem.locate_dofs_topological(
-    Q, line_mesh.topology.dim - 1, out_facets
-)
-
 restriction_test = PointwiseTrace(line_mesh)
 P, imap_K_n, imap_V_n = create_interpolation_matrix(
     V, W, restriction_test, use_petsc=True
@@ -156,7 +127,47 @@ P, imap_K_n, imap_V_n = create_interpolation_matrix(
 Pt = P.copy()  # type: ignore
 Pt.transpose()
 
-a00_W = dolfinx.fem.form(ufl.inner(z, w) * dx_1D)
+x = ufl.SpatialCoordinate(volume)
+#f = dolfinx.fem.Constant(volume, 0.0)  # x[0]
+f = dolfinx.fem.Constant(line_mesh, 2.0)
+
+L0 = f * w * dx_1D
+b0_1D = dolfinx.fem.petsc.assemble_vector(dolfinx.fem.form(L0))
+b0_1D.ghostUpdate(addv=PETSc.InsertMode.ADD_VALUES, mode=PETSc.ScatterMode.REVERSE)  # type: ignore
+b0_3D = dolfinx.fem.Function(V)
+b0 = b0_3D.x.petsc_vec
+Pt.mult(b0_1D, b0)
+
+L1 = f * q * dx_1D
+b1 = dolfinx.fem.petsc.assemble_vector(dolfinx.fem.form(L1))
+b1.ghostUpdate(addv=PETSc.InsertMode.ADD_VALUES, mode=PETSc.ScatterMode.REVERSE)  # type: ignore
+
+# V_in = dolfinx.fem.Constant(line_mesh, 0.0)
+# V_out = dolfinx.fem.Constant(line_mesh, 3.0)
+
+
+# def bc_in(x):
+#     return np.isclose(x[2], l_min)
+
+
+# def bc_out(x):
+#     return np.isclose(x[2], l_max)
+
+
+# in_facets = dolfinx.mesh.locate_entities_boundary(
+#     line_mesh, line_mesh.topology.dim - 1, bc_in
+# )
+# in_dofs = dolfinx.fem.locate_dofs_topological(Q, line_mesh.topology.dim - 1, in_facets)
+# out_facets = dolfinx.mesh.locate_entities_boundary(
+#     line_mesh, line_mesh.topology.dim - 1, bc_out
+# )
+# out_dofs = dolfinx.fem.locate_dofs_topological(
+#     Q, line_mesh.topology.dim - 1, out_facets
+# )
+
+
+
+a00_W = dolfinx.fem.form(beta * ufl.inner(z, w) * dx_1D)
 A00_W = dolfinx.fem.petsc.assemble_matrix(a00_W)
 A00_W.assemble()
 Z = Pt.matMult(A00_W).matMult(T)
@@ -167,16 +178,13 @@ assign_LG_map(
     V.dofmap.index_map_bs,
     V.dofmap.index_map_bs,
 )
-A00.axpy(gamma, Z)
+A00.axpy(1, Z)
 
 D = Pt.matMult(A01)
-D.scale(-gamma)
-C.scale(gamma)
-A11.scale(gamma)
 
 bcs = [
-    dolfinx.fem.dirichletbc(V_in, in_dofs, Q),
-    dolfinx.fem.dirichletbc(V_out, out_dofs, Q),
+    #dolfinx.fem.dirichletbc(V_in, in_dofs, Q),
+    #dolfinx.fem.dirichletbc(V_out, out_dofs, Q),
 ]
 for bc in bcs:
     dofs, lz = bc._cpp_object.dof_indices()
