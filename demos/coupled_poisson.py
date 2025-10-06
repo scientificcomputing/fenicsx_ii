@@ -111,9 +111,9 @@ A10.assemble()
 A01 = dolfinx.fem.petsc.assemble_matrix(dolfinx.fem.form(a01))
 A01.assemble()
 
-R = 0.01
+R = 0.04
 # Create restriction operator for trial space
-restriction_trial = Circle(line_mesh, R, degree=10)
+restriction_trial = Circle(line_mesh, R, degree=5)
 T, imap_K, imap_V = create_interpolation_matrix(V, W, restriction_trial, use_petsc=True)
 C = A10.matMult(T)
 assign_LG_map(

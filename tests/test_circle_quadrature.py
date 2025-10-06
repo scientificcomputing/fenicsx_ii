@@ -2,6 +2,7 @@ import basix
 import numpy as np
 import numpy.typing as npt
 import pytest
+import sympy as sp
 
 from fenicsx_ii.quadrature import _eta, compute_disk_quadrature
 
@@ -246,4 +247,23 @@ def test_circle_quadrature(n):
             weights[i * num_coords_per_line : (i + 1) * num_coords_per_line],
             scale * qw * reference_weights[i],
             atol=1e-16,
+        )
+
+
+@pytest.mark.parametrize("n", [1, 2, 3, 4, 5, 6, 7])
+def test_quadrature_accuracy(n):
+    points, weights = compute_disk_quadrature(n)
+
+    for m in range(n):
+
+        def f(x):
+            return 2 + (x[0] ** (n - m) - 0.1) * (x[1] ** m - 0.2)
+
+        integral = np.sum(weights * f(points.T))
+        x, y = sp.symbols("x y")
+        exact_integral = sp.integrate(
+            f([x, y]), (y, -sp.sqrt(1 - x**2), sp.sqrt(1 - x**2)), (x, -1, 1)
+        )
+        np.testing.assert_allclose(
+            integral, float(exact_integral), rtol=1e-12, atol=1e-12
         )

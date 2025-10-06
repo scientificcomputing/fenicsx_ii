@@ -12,7 +12,7 @@ dependencies = ["fenics-dolfinx>0.9.0"]
 
 
 [project.optional-dependencies]
-test = ["pytest"]
+test = ["pytest", "sympy"]
 dev = ["pdbpp", "ipython", "mypy", "ruff"]
 docs = ["jupyter-book", "jupytext"]
 all = ["fenicsx_ii[test]", "fenicsx_ii[dev]", "fenicsx_ii[docs]"]
