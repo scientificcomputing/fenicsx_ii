@@ -33,6 +33,7 @@ def assign_LG_map(
 
 def assemble_matrix(
     a: ufl.Form,
+    bcs: list[dolfinx.fem.DirichletBC] | None = None,
     form_compiler_options: dict | None = None,
     jit_options: dict | None = None,
 ) -> PETSc.Mat:
@@ -41,11 +42,20 @@ def assemble_matrix(
     Args:
         a: Bi-linear UFL form to assemble.
     """
+    bcs = [] if bcs is None else bcs
     num_arguments = len(a.arguments())
     if num_arguments == 2:
-        return assemble_matrix_and_apply_restriction(
+        A = assemble_matrix_and_apply_restriction(
             None, a, form_compiler_options, jit_options
         )
+        # Unsymmetric application of Dirichlet BCs
+        spaces = [arg.ufl_function_space()._cpp_object for arg in a.arguments()]
+        on_diagonal = float(spaces[0] == spaces[1])
+        for bc in bcs:
+            if bc.function_space == spaces[0]:
+                dofs, lz = bc._cpp_object.dof_indices()
+                A.zeroRowsLocal(dofs[:lz], diag=on_diagonal)
+        return A
     else:
         bilinear_form = ufl.extract_blocks(a)
         num_spaces = len(bilinear_form)
@@ -59,6 +69,16 @@ def assemble_matrix(
                         form_compiler_options,
                         jit_options,
                     )
+                    # Unsymmetric application of Dirichlet BCs
+                    spaces = [
+                        arg.ufl_function_space()._cpp_object
+                        for arg in bilinear_form[i][j].arguments()
+                    ]
+                    on_diagonal = float(spaces[0] == spaces[1])
+                    for bc in bcs:
+                        if bc.function_space == spaces[0]:
+                            dofs, lz = bc._cpp_object.dof_indices()
+                            A[i][j].zeroRowsLocal(dofs[:lz], diag=on_diagonal)
         return PETSc.Mat().createNest(A)  # type: ignore
 
 
@@ -90,7 +110,7 @@ def assemble_matrix_and_apply_restriction(
 
             case [0]:
                 # Replace rows, i.e. apply interpolation matrix on the left
-                K, imap_test, _imap_trial = create_interpolation_matrix(
+                K, _imap_test, _imap_trial = create_interpolation_matrix(
                     test_arg.parent_space,
                     test_arg.ufl_function_space(),
                     test_arg.restriction_operator,
@@ -100,9 +120,10 @@ def assemble_matrix_and_apply_restriction(
                 D = K.matMult(A)
                 trial_space = trial_arg.ufl_function_space()
                 test_space = test_arg.parent_space
+
                 assign_LG_map(
                     D,
-                    imap_test,
+                    test_space.dofmap.index_map,
                     trial_space.dofmap.index_map,
                     test_space.dofmap.index_map_bs,
                     trial_space.dofmap.index_map_bs,
@@ -159,10 +180,10 @@ def assemble_matrix_and_apply_restriction(
                 test_space = test_arg.parent_space
                 assign_LG_map(
                     D,
-                    trial_space.dofmap.index_map,
                     test_space.dofmap.index_map,
-                    trial_space.dofmap.index_map_bs,
+                    trial_space.dofmap.index_map,
                     test_space.dofmap.index_map_bs,
+                    trial_space.dofmap.index_map_bs,
                 )
                 if matrix is None:
                     matrix = D
@@ -177,6 +198,7 @@ def assemble_matrix_and_apply_restriction(
 
 def assemble_vector(
     L: ufl.Form,
+    bcs: list[dolfinx.fem.DirichletBC] | None = None,
     form_compiler_options: dict | None = None,
     jit_options: dict | None = None,
 ) -> PETSc.Vec:
@@ -185,11 +207,20 @@ def assemble_vector(
     Args:
         b: Linear UFL form to assemble.
     """
+    bcs = [] if bcs is None else bcs
     num_arguments = len(L.arguments())
     if num_arguments == 1:
-        return assemble_vector_and_apply_restriction(
+        b = assemble_vector_and_apply_restriction(
             None, L, form_compiler_options, jit_options
         )
+        space = L.arguments()[0].ufl_function_space()._cpp_object
+        for bc in bcs:
+            if bc.function_space == space:
+                dolfinx.fem.petsc.set_bc(b, [bc])
+        b.ghostUpdate(
+            addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD
+        )  # type: ignore
+        return b
     else:
         linear_form = ufl.extract_blocks(L)
         num_spaces = len(linear_form)
@@ -202,6 +233,14 @@ def assemble_vector(
                     form_compiler_options,
                     jit_options,
                 )
+                space = linear_form[i].arguments()[0].ufl_function_space()._cpp_object
+                for bc in bcs:
+                    if bc.function_space == space:
+                        dolfinx.fem.petsc.set_bc(b[i], [bc])
+                b[i].ghostUpdate(
+                    addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD
+                )  # type: ignore
+
         return PETSc.Vec().createNest(b)  # type: ignore
 
 

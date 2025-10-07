@@ -58,29 +58,45 @@ avg_u = Average(u, restriction_trial, Q)
 avg_v = Average(v, restriction_test, Q)
 W = dolfinx.fem.functionspace(line_mesh, ("Lagrange", 1, (2,)))
 
+domain.topology.create_connectivity(domain.topology.dim - 1, domain.topology.dim)
+boundary_facets = dolfinx.mesh.exterior_facet_indices(domain.topology)
+boundary_dofs_V = dolfinx.fem.locate_dofs_topological(
+    V, domain.topology.dim - 1, boundary_facets
+)
+bc_V = dolfinx.fem.dirichletbc(np.array([2.0, 3.0]), boundary_dofs_V, V)
+line_mesh.topology.create_connectivity(
+    line_mesh.topology.dim - 1, line_mesh.topology.dim
+)
+line_boundary = dolfinx.mesh.exterior_facet_indices(line_mesh.topology)
+boundary_dofs_W = dolfinx.fem.locate_dofs_topological(
+    W, line_mesh.topology.dim - 1, line_boundary
+)
+bc_W = dolfinx.fem.dirichletbc(np.array([-1.0, 4.0]), boundary_dofs_W, W)
+bcs = [bc_V, bc_W]
+
 dGamma = ufl.Measure("dx", domain=line_mesh)
 
 a_form = ufl.inner(avg_u, avg_v) * ufl.dx
 a_form += ufl.inner(u, v) * ufl.dx + ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.ds
 
-A = assemble_matrix(a_form)
+A = assemble_matrix(a_form, bcs=bcs)
 
 z = ufl.TestFunction(W)
 
-a01 = ufl.inner(avg_u, z) * dGamma
-C = assemble_matrix(a01)
+a10 = ufl.inner(avg_u, z) * dGamma
+C = assemble_matrix(a10, bcs=bcs)
 
 
 w = ufl.TrialFunction(W)
-a10 = ufl.inner(w, avg_v) * dGamma
-D = assemble_matrix(a10)
+a01 = ufl.inner(w, avg_v) * dGamma
+D = assemble_matrix(a01, bcs=bcs)
 
 a11 = ufl.inner(z, w) * dGamma
 
-E = assemble_matrix(a11)
+E = assemble_matrix(a11, bcs=bcs)
 
 PETSc.Sys.Print(A.getSizes(), C.getSizes(), D.getSizes(), E.getSizes())
-norms = A.norm(0), C.norm(0), D.norm(0), E.norm(0)
+norms = A.norm(0), D.norm(0), C.norm(0), E.norm(0)
 
 PETSc.Sys.Print(norms)
 
@@ -89,11 +105,10 @@ f_vol = ufl.as_vector((2, 3))
 f_line = dolfinx.fem.Constant(line_mesh, (1.0, 2.0))
 L0 = ufl.inner(f_vol, avg_v) * dGamma
 L1 = ufl.inner(f_line, z) * dGamma
-b0 = assemble_vector(L0)
-b1 = assemble_vector(L1)
+b0 = assemble_vector(L0, bcs=bcs)
+b1 = assemble_vector(L1, bcs=bcs)
 b_norms = b0.norm(0), b1.norm(0)
 PETSc.Sys.Print(b_norms)
-
 
 T = ufl.MixedFunctionSpace(V, W)
 u, w = ufl.TrialFunctions(T)
@@ -107,7 +122,7 @@ ab_form += ufl.inner(avg_u, z) * dGamma
 ab_form += ufl.inner(w, avg_v) * dGamma
 ab_form += ufl.inner(w, z) * dGamma
 
-B = assemble_matrix(ab_form)
+B = assemble_matrix(ab_form, bcs=bcs)
 
 PETSc.Sys.Print(B.getSizes())
 for i in range(2):
@@ -118,7 +133,7 @@ for i in range(2):
 Lb_form = ufl.inner(f_vol, avg_v) * dGamma
 Lb_form += ufl.inner(f_line, z) * dGamma
 
-b_blocked = assemble_vector(Lb_form)
+b_blocked = assemble_vector(Lb_form, bcs=bcs)
 
 for i in range(2):
     n_i = b_blocked.getNestSubVecs()[i].norm(0)
