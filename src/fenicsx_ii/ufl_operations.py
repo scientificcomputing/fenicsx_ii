@@ -3,11 +3,12 @@
 TODO: Average operations on coefficients.
 
 """
-from functools import singledispatchmethod
-import ufl
-from ufl.corealg.dag_traverser import DAGTraverser
 
+from functools import singledispatchmethod
+
+import ufl
 from ufl.algorithms.map_integrands import map_integrands
+from ufl.corealg.dag_traverser import DAGTraverser
 from ufl.domain import extract_unique_domain
 
 __all__ = ["Average", "get_replaced_argument_indices", "apply_replacer"]
@@ -15,13 +16,13 @@ __all__ = ["Average", "get_replaced_argument_indices", "apply_replacer"]
 
 class AveragedArgument(ufl.Argument):
     """Argument that is restricted to a different mesh through a restriction operator.
-    
+
     Args:
         function_space: Function space on the new mesh.
         part: Part of the function space.
         number: Argument number.
         restriction_operator: Operator that restricts from the parent space to this space.
-        parent_space: Function space on the original mesh.    
+        parent_space: Function space on the original mesh.
     """
 
     __slots__ = ("_part", "_number", "_parent_space", "_restriction_operator")
@@ -57,14 +58,16 @@ class AveragedArgument(ufl.Argument):
         return self._restriction_operator
 
 
-@ufl.core.ufl_type.ufl_type(num_ops=1, inherit_shape_from_operand=0, inherit_indices_from_operand=0)
+@ufl.core.ufl_type.ufl_type(
+    num_ops=1, inherit_shape_from_operand=0, inherit_indices_from_operand=0
+)
 class Average(ufl.core.operator.Operator):
     """Averaging operator.
-    
+
     Args:
         u: Argument to be averaged.
         restriction_operator: Operator that restricts from the parent space to the averaged space.
-        restriction_space: Function space on the new mesh.    
+        restriction_space: Function space on the new mesh.
     """
 
     __slots__ = ("_u", "_restriction_operator", "_restriction_space")
@@ -165,7 +168,7 @@ class AverageReplacer(DAGTraverser):
             return new_u
         else:
             raise NotImplementedError("Can only average arguments, got {u}")
- 
+
     @process.register(ufl.core.expr.Expr)
     def _(
         self,
@@ -209,4 +212,3 @@ def get_replaced_argument_indices(form: ufl.Form) -> list[int, ...]:
         if isinstance(arg, AveragedArgument):
             indices.append(arg.number())
     return indices
-
