@@ -185,7 +185,7 @@ A00.axpy(1, Z)
 
 D = Pt.matMult(A01)
 
-bcs = [
+bcs: list[dolfinx.fem.DirichletBC] = [
     # dolfinx.fem.dirichletbc(V_in, in_dofs, Q),
     # dolfinx.fem.dirichletbc(V_out, out_dofs, Q),
 ]
