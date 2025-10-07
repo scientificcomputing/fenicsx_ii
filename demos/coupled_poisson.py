@@ -157,15 +157,16 @@ b1.ghostUpdate(addv=PETSc.InsertMode.ADD_VALUES, mode=PETSc.ScatterMode.REVERSE)
 #     return np.isclose(x[2], l_max)
 
 
+# ltdim = line_mesh.topology.dim
 # in_facets = dolfinx.mesh.locate_entities_boundary(
-#     line_mesh, line_mesh.topology.dim - 1, bc_in
+#     line_mesh, ltdim - 1, bc_in
 # )
-# in_dofs = dolfinx.fem.locate_dofs_topological(Q, line_mesh.topology.dim - 1, in_facets)
+# in_dofs = dolfinx.fem.locate_dofs_topological(Q, ltdim - 1, in_facets)
 # out_facets = dolfinx.mesh.locate_entities_boundary(
-#     line_mesh, line_mesh.topology.dim - 1, bc_out
+#     line_mesh, ltdim - 1, bc_out
 # )
 # out_dofs = dolfinx.fem.locate_dofs_topological(
-#     Q, line_mesh.topology.dim - 1, out_facets
+#     Q, ltdim - 1, out_facets
 # )
 
 
