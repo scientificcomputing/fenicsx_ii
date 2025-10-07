@@ -25,6 +25,8 @@ class ReductionOperator(typing.Protocol):
     @property
     def num_points(self) -> int: ...
 
+    def __str__(self) -> str: ...
+
 
 class PointwiseTrace:
     def __init__(self, mesh: dolfinx.mesh.Mesh):
@@ -47,6 +49,9 @@ class PointwiseTrace:
     @property
     def num_points(self) -> int:
         return 1
+
+    def __str__(self) -> str:
+        return f"PointwiseTrace({self._mesh})"
 
 
 class Circle:
@@ -85,6 +90,9 @@ class Circle:
                 np.zeros_like(xp.T[0]),
             ]
         ).T
+
+    def __str__(self) -> str:
+        return f"Circle({self._mesh}, radius={self._radius}, num_points={self._w.shape[0]})"
 
     @property
     def num_points(self):
