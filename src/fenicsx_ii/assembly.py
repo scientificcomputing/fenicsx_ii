@@ -41,9 +41,26 @@ def assemble_matrix(
     Args:
         a: Bi-linear UFL form to assemble.
     """
+    num_arguments = len(a.arguments())
+    if num_arguments == 2:
+        return assemble_and_apply_restriction(None, a, form_compiler_options, jit_options)
+    else:
+        bilinear_form = ufl.extract_blocks(a)
+        num_spaces = len(bilinear_form)
+        A = [[None for _ in range(num_spaces)] for _ in range(num_spaces)]
+        for i in range(num_spaces):
+            for j in range(num_spaces):
+                if bilinear_form[i][j] is not None:
+                    A[i][j] = assemble_and_apply_restriction(
+                        A[i][j],
+                        bilinear_form[i][j],
+                        form_compiler_options,
+                        jit_options,
+                    )
+        return PETSc.Mat().createNest(A)  # type: ignore
 
-    new_forms = apply_replacer(a)
-    matrix = None
+def assemble_and_apply_restriction(matrix: None|PETSc.Mat, form: ufl.Form, form_compiler_options:dict|None=None, jit_options:dict|None=None)->PETSc.Mat:
+    new_forms = apply_replacer(form)
     for form in new_forms:
         a_c = dolfinx.fem.form(
             form, form_compiler_options=form_compiler_options, jit_options=jit_options

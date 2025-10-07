@@ -1,6 +1,6 @@
+
 from mpi4py import MPI
 from petsc4py import PETSc
-
 import basix.ufl
 import dolfinx
 import dolfinx.fem.petsc
@@ -47,7 +47,7 @@ V = dolfinx.fem.functionspace(domain, ("Lagrange", 1, (2,)))
 u = ufl.TrialFunction(V)
 v = ufl.TestFunction(V)
 
-Q = dolfinx.fem.functionspace(line_mesh, ("DG", 0, (2,)))  # Intermediate space
+Q = dolfinx.fem.functionspace(line_mesh, ("DG", 0, (2,))) # Intermediate space
 
 
 R = 0.1
@@ -56,17 +56,17 @@ restriction_test = PointwiseTrace(line_mesh)
 
 avg_u = Average(u, restriction_trial, Q)
 avg_v = Average(v, restriction_test, Q)
+W = dolfinx.fem.functionspace(line_mesh, ("Lagrange", 1, (2,)))
 
+dGamma = ufl.Measure("dx", domain=line_mesh)
 
 a_form = ufl.inner(avg_u, avg_v) * ufl.dx
 a_form += ufl.inner(u, v) * ufl.dx + ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.ds
 
 A = assemble_matrix(a_form)
 
-W = dolfinx.fem.functionspace(line_mesh, ("Lagrange", 1, (2,)))
 z = ufl.TestFunction(W)
 
-dGamma = ufl.Measure("dx", domain=line_mesh)
 a01 = ufl.inner(avg_u, z) * dGamma
 C = assemble_matrix(a01)
 
@@ -83,3 +83,22 @@ PETSc.Sys.Print(A.getSizes(), C.getSizes(), D.getSizes(), E.getSizes())
 norms = A.norm(0), C.norm(0), D.norm(0), E.norm(0)
 
 PETSc.Sys.Print(norms)
+
+T = ufl.MixedFunctionSpace(V, W)
+u, w = ufl.TrialFunctions(T)
+v, z = ufl.TestFunctions(T)
+avg_u = Average(u, restriction_trial, W)
+avg_v = Average(v, restriction_test, W)
+
+ab_form = ufl.inner(avg_u, avg_v) * ufl.dx
+ab_form += ufl.inner(u, v) * ufl.dx + ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.ds
+ab_form += ufl.inner(avg_u, z) * dGamma
+ab_form += ufl.inner(w, avg_v) * dGamma
+ab_form += ufl.inner(w, z) * dGamma
+
+B = assemble_matrix(ab_form)
+
+PETSc.Sys.Print(B.getSizes())
+for i in range(2):
+    for j in range(2):
+        PETSc.Sys.Print(f"B[{i}, {j}], {B.getNestSubMatrix(i, j).norm(0)}")

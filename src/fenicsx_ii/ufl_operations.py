@@ -74,6 +74,7 @@ class Average(ufl.core.operator.Operator):
 
     def __init__(self, u: ufl.Argument, restriction_operator, restriction_space):
         """Create a custom operator."""
+        assert isinstance(u, ufl.Argument), "Can only average arguments"
         self._u = u
         self._restriction_operator = restriction_operator
         self._restriction_space = restriction_space
@@ -103,6 +104,13 @@ class Average(ufl.core.operator.Operator):
     def restriction_space(self):
         return self._restriction_space
 
+    def _ufl_expr_reconstruct_(self, *operands):
+        if isinstance(operands[0], ufl.constantvalue.Zero) or isinstance(
+            operands[0], ufl.operators.Zero
+        ):
+            return ufl.operators.Zero(operands[0].ufl_shape)
+        else:
+            return Average(operands[0], self._restriction_operator, self._restriction_space)
 
 class AverageReplacer(DAGTraverser):
     """DAGTraverser to replaced averaged arguments with an argument in an
@@ -166,8 +174,12 @@ class AverageReplacer(DAGTraverser):
                 restriction_operator=res_op,
             )
             return new_u
+        elif isinstance(u, ufl.constantvalue.Zero):
+            return ufl.operators.Zero(o.ufl_shape)
+        elif isinstance(u, ufl.operators.Zero):
+            return ufl.operators.Zero(o.ufl_shape)
         else:
-            raise NotImplementedError("Can only average arguments, got {u}")
+            raise NotImplementedError(f"Can only average arguments, got {type(u)}")
 
     @process.register(ufl.core.expr.Expr)
     def _(
@@ -201,7 +213,8 @@ def apply_replacer(form: ufl.Form) -> ufl.Form:
         old_domain = itg.ufl_domain()
         if new_domain != old_domain:
             new_itg = new_itg.reconstruct(domain=new_domain)
-        mapped_integrals.append(new_itg)
+        if not isinstance(itg.integrand(), ufl.operators.Zero):
+            mapped_integrals.append(new_itg)
     return [ufl.Form([mapped_integral]) for mapped_integral in mapped_integrals]
 
 
