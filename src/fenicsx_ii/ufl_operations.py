@@ -48,7 +48,8 @@ class AveragedArgument(ufl.Argument):
         return self._parent_space
 
     def __repr__(self) -> str:
-        return f"AveragedArgument({self.ufl_function_space()}, part={self._part}, number={self._number}, restriction_operator={self._restriction_operator} parent_space={self._parent_space})"
+        return f"AveragedArgument({self.ufl_function_space()}, part={self._part}, number={self._number}," + \
+               f" restriction_operator={self._restriction_operator}, parent_space={self._parent_space})"
 
     def __str__(self) -> str:
         return self.__repr__()
@@ -110,7 +111,10 @@ class Average(ufl.core.operator.Operator):
         ):
             return ufl.operators.Zero(operands[0].ufl_shape)
         else:
-            return Average(operands[0], self._restriction_operator, self._restriction_space)
+            return Average(
+                operands[0], self._restriction_operator, self._restriction_space
+            )
+
 
 class AverageReplacer(DAGTraverser):
     """DAGTraverser to replaced averaged arguments with an argument in an

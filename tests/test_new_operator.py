@@ -1,6 +1,6 @@
-
 from mpi4py import MPI
 from petsc4py import PETSc
+
 import basix.ufl
 import dolfinx
 import dolfinx.fem.petsc
@@ -47,7 +47,7 @@ V = dolfinx.fem.functionspace(domain, ("Lagrange", 1, (2,)))
 u = ufl.TrialFunction(V)
 v = ufl.TestFunction(V)
 
-Q = dolfinx.fem.functionspace(line_mesh, ("DG", 0, (2,))) # Intermediate space
+Q = dolfinx.fem.functionspace(line_mesh, ("DG", 0, (2,)))  # Intermediate space
 
 
 R = 0.1
@@ -90,7 +90,7 @@ v, z = ufl.TestFunctions(T)
 avg_u = Average(u, restriction_trial, W)
 avg_v = Average(v, restriction_test, W)
 
-ab_form = ufl.inner(avg_u, avg_v) * ufl.dx
+ab_form = ufl.inner(avg_u, avg_v) * dGamma
 ab_form += ufl.inner(u, v) * ufl.dx + ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.ds
 ab_form += ufl.inner(avg_u, z) * dGamma
 ab_form += ufl.inner(w, avg_v) * dGamma

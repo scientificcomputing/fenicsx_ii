@@ -43,7 +43,9 @@ def assemble_matrix(
     """
     num_arguments = len(a.arguments())
     if num_arguments == 2:
-        return assemble_and_apply_restriction(None, a, form_compiler_options, jit_options)
+        return assemble_and_apply_restriction(
+            None, a, form_compiler_options, jit_options
+        )
     else:
         bilinear_form = ufl.extract_blocks(a)
         num_spaces = len(bilinear_form)
@@ -59,12 +61,19 @@ def assemble_matrix(
                     )
         return PETSc.Mat().createNest(A)  # type: ignore
 
-def assemble_and_apply_restriction(matrix: None|PETSc.Mat, form: ufl.Form, form_compiler_options:dict|None=None, jit_options:dict|None=None)->PETSc.Mat:
+
+def assemble_and_apply_restriction(
+    matrix: None | PETSc.Mat,
+    form: ufl.Form,
+    form_compiler_options: dict | None = None,
+    jit_options: dict | None = None,
+) -> PETSc.Mat:
     new_forms = apply_replacer(form)
     for form in new_forms:
         a_c = dolfinx.fem.form(
             form, form_compiler_options=form_compiler_options, jit_options=jit_options
         )
+        # NOTE: Need to insert avgCoefficients here before assembling orginal matrix
         A = dolfinx.fem.petsc.assemble_matrix(a_c)
         A.assemble()
 
