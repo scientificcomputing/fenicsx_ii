@@ -8,7 +8,7 @@ import numpy as np
 import ufl
 
 from fenicsx_ii import Circle, PointwiseTrace
-from fenicsx_ii.assembly import assemble_matrix
+from fenicsx_ii.assembly import assemble_matrix, assemble_vector
 from fenicsx_ii.ufl_operations import Average
 
 domain = dolfinx.mesh.create_box(
@@ -84,11 +84,22 @@ norms = A.norm(0), C.norm(0), D.norm(0), E.norm(0)
 
 PETSc.Sys.Print(norms)
 
+
+f_vol = ufl.as_vector((2, 3))
+f_line = dolfinx.fem.Constant(line_mesh, (1.0, 2.0))
+L0 = ufl.inner(f_vol, avg_v) * dGamma
+L1 = ufl.inner(f_line, z) * dGamma
+b0 = assemble_vector(L0)
+b1 = assemble_vector(L1)
+b_norms = b0.norm(0), b1.norm(0)
+PETSc.Sys.Print(b_norms)
+
+
 T = ufl.MixedFunctionSpace(V, W)
 u, w = ufl.TrialFunctions(T)
 v, z = ufl.TestFunctions(T)
-avg_u = Average(u, restriction_trial, W)
-avg_v = Average(v, restriction_test, W)
+avg_u = Average(u, restriction_trial, Q)
+avg_v = Average(v, restriction_test, Q)
 
 ab_form = ufl.inner(avg_u, avg_v) * dGamma
 ab_form += ufl.inner(u, v) * ufl.dx + ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.ds
@@ -102,3 +113,13 @@ PETSc.Sys.Print(B.getSizes())
 for i in range(2):
     for j in range(2):
         PETSc.Sys.Print(f"B[{i}, {j}], {B.getNestSubMatrix(i, j).norm(0)}")
+
+
+Lb_form = ufl.inner(f_vol, avg_v) * dGamma
+Lb_form += ufl.inner(f_line, z) * dGamma
+
+b_blocked = assemble_vector(Lb_form)
+
+for i in range(2):
+    n_i = b_blocked.getNestSubVecs()[i].norm(0)
+    PETSc.Sys.Print(i, n_i)

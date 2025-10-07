@@ -48,8 +48,10 @@ class AveragedArgument(ufl.Argument):
         return self._parent_space
 
     def __repr__(self) -> str:
-        return f"AveragedArgument({self.ufl_function_space()}, part={self._part}, number={self._number}," + \
-               f" restriction_operator={self._restriction_operator}, parent_space={self._parent_space})"
+        return (
+            f"AveragedArgument({self.ufl_function_space()}, part={self._part}, number={self._number},"
+            + f" restriction_operator={self._restriction_operator}, parent_space={self._parent_space})"
+        )
 
     def __str__(self) -> str:
         return self.__repr__()

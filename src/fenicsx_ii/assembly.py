@@ -7,7 +7,7 @@ import ufl
 from .interpolation import create_interpolation_matrix
 from .ufl_operations import apply_replacer, get_replaced_argument_indices
 
-__all__ = ["assemble_matrix"]
+__all__ = ["assemble_matrix", "assemble_vector"]
 
 
 def assign_LG_map(
@@ -43,7 +43,7 @@ def assemble_matrix(
     """
     num_arguments = len(a.arguments())
     if num_arguments == 2:
-        return assemble_and_apply_restriction(
+        return assemble_matrix_and_apply_restriction(
             None, a, form_compiler_options, jit_options
         )
     else:
@@ -53,7 +53,7 @@ def assemble_matrix(
         for i in range(num_spaces):
             for j in range(num_spaces):
                 if bilinear_form[i][j] is not None:
-                    A[i][j] = assemble_and_apply_restriction(
+                    A[i][j] = assemble_matrix_and_apply_restriction(
                         A[i][j],
                         bilinear_form[i][j],
                         form_compiler_options,
@@ -62,23 +62,25 @@ def assemble_matrix(
         return PETSc.Mat().createNest(A)  # type: ignore
 
 
-def assemble_and_apply_restriction(
+def assemble_matrix_and_apply_restriction(
     matrix: None | PETSc.Mat,
     form: ufl.Form,
     form_compiler_options: dict | None = None,
     jit_options: dict | None = None,
 ) -> PETSc.Mat:
     new_forms = apply_replacer(form)
-    for form in new_forms:
+    for avg_form in new_forms:
         a_c = dolfinx.fem.form(
-            form, form_compiler_options=form_compiler_options, jit_options=jit_options
+            avg_form,
+            form_compiler_options=form_compiler_options,
+            jit_options=jit_options,
         )
         # NOTE: Need to insert avgCoefficients here before assembling orginal matrix
         A = dolfinx.fem.petsc.assemble_matrix(a_c)
         A.assemble()
 
-        replacement_indices = get_replaced_argument_indices(form)
-        test_arg, trial_arg = form.arguments()
+        replacement_indices = get_replaced_argument_indices(avg_form)
+        test_arg, trial_arg = avg_form.arguments()
         match replacement_indices:
             case []:
                 if matrix is None:
@@ -166,4 +168,91 @@ def assemble_and_apply_restriction(
                     matrix = D
                 else:
                     matrix.axpy(1.0, D)
+            case _:
+                raise ValueError(
+                    f"Unexpected replacement indices {replacement_indices}"
+                )
     return matrix
+
+
+def assemble_vector(
+    L: ufl.Form,
+    form_compiler_options: dict | None = None,
+    jit_options: dict | None = None,
+) -> PETSc.Vec:
+    """Assemble a matrix from a UFL form.
+
+    Args:
+        b: Linear UFL form to assemble.
+    """
+    num_arguments = len(L.arguments())
+    if num_arguments == 1:
+        return assemble_vector_and_apply_restriction(
+            None, L, form_compiler_options, jit_options
+        )
+    else:
+        linear_form = ufl.extract_blocks(L)
+        num_spaces = len(linear_form)
+        b = [None for _ in range(num_spaces)]
+        for i in range(num_spaces):
+            if linear_form[i] is not None:
+                b[i] = assemble_vector_and_apply_restriction(
+                    b[i],
+                    linear_form[i],
+                    form_compiler_options,
+                    jit_options,
+                )
+        return PETSc.Vec().createNest(b)  # type: ignore
+
+
+def assemble_vector_and_apply_restriction(
+    vec: None | PETSc.Vec,
+    form: ufl.Form,
+    form_compiler_options: dict | None = None,
+    jit_options: dict | None = None,
+) -> PETSc.Vec:
+    new_forms = apply_replacer(form)
+    for avg_form in new_forms:
+        L_c = dolfinx.fem.form(
+            avg_form,
+            form_compiler_options=form_compiler_options,
+            jit_options=jit_options,
+        )
+        # NOTE: Need to insert avgCoefficients here before assembling orginal matrix
+        b = dolfinx.fem.petsc.assemble_vector(L_c)
+        b.ghostUpdate(addv=PETSc.InsertMode.ADD_VALUES, mode=PETSc.ScatterMode.REVERSE)  # type: ignore
+
+        replacement_indices = get_replaced_argument_indices(avg_form)
+        test_arg = avg_form.arguments()[0]
+        match replacement_indices:
+            case []:
+                if vec is None:
+                    vec = b
+                else:
+                    vec.axpy(1.0, b)
+
+            case [0]:
+                # Replace rows, i.e. apply interpolation matrix on the left
+                K, _, _ = create_interpolation_matrix(
+                    test_arg.parent_space,
+                    test_arg.ufl_function_space(),
+                    test_arg.restriction_operator,
+                    use_petsc=True,
+                )
+                K.transpose()  # in-place transpose
+
+                z = dolfinx.fem.petsc.create_vector(
+                    form.arguments()[0].ufl_function_space()
+                )
+                with z.localForm() as z_loc:
+                    z_loc.set(0)
+                K.mult(b, z)
+                if vec is None:
+                    vec = z
+                else:
+                    vec.axpy(1.0, z)
+            case _:
+                raise ValueError(
+                    f"Unexpected replacement indices {replacement_indices}"
+                )
+    return vec
