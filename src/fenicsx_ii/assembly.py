@@ -45,7 +45,9 @@ def assemble_matrix(
     new_forms = apply_replacer(a)
     matrix = None
     for form in new_forms:
-        a_c = dolfinx.fem.form(form)
+        a_c = dolfinx.fem.form(
+            form, form_compiler_options=form_compiler_options, jit_options=jit_options
+        )
         A = dolfinx.fem.petsc.assemble_matrix(a_c)
         A.assemble()
 
