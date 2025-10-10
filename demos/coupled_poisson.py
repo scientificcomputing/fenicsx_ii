@@ -8,25 +8,7 @@ import numpy as np
 import ufl
 
 from fenicsx_ii import Circle, PointwiseTrace, create_interpolation_matrix
-
-
-def assign_LG_map(
-    C: PETSc.Mat,  # type: ignore
-    row_map: dolfinx.common.IndexMap,
-    col_map: dolfinx.common.IndexMap,
-    row_bs: int,
-    col_bs: int,
-):
-    global_row_map = row_map.local_to_global(
-        np.arange(row_map.size_local + row_map.num_ghosts, dtype=np.int32)
-    ).astype(PETSc.IntType)  # type: ignore
-    global_col_map = col_map.local_to_global(
-        np.arange(col_map.size_local + col_map.num_ghosts, dtype=np.int32)
-    ).astype(PETSc.IntType)  # type: ignore
-    row_map = PETSc.LGMap().create(global_row_map, bsize=row_bs, comm=row_map.comm)  # type: ignore
-    col_map = PETSc.LGMap().create(global_col_map, bsize=col_bs, comm=col_map.comm)  # type: ignore
-    C.setLGMap(row_map, col_map)  # type: ignore
-
+from fenicsx_ii.assembly import assign_LG_map
 
 M = 2**5
 N = 2 * M

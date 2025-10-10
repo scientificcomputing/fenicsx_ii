@@ -48,6 +48,8 @@ def create_interpolation_matrix(
     quad_points = quadrature_rule.points
 
     interpolation_coordinates = quad_points.reshape(-1, mesh_to.geometry.dim)
+    assert mesh_to.geometry.dim == 3
+
     num_average_qp = red_op.num_points
 
     point_ownership = dolfinx.geometry.determine_point_ownership(
