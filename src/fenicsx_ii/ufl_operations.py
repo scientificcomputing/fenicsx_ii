@@ -6,6 +6,7 @@ TODO: Average operations on coefficients.
 
 from functools import singledispatchmethod
 
+import dolfinx
 import ufl
 from ufl.algorithms.map_integrands import map_integrands
 from ufl.corealg.dag_traverser import DAGTraverser
@@ -61,6 +62,49 @@ class AveragedArgument(ufl.Argument):
         return self._restriction_operator
 
 
+class AveragedCoefficient(dolfinx.fem.Function):
+    """Coefficient that is restricted to a different mesh through a restriction operator.
+
+    Args:
+        function_space: Function space on the new mesh.
+        restriction_operator: Operator that restricts from the parent space to this space.
+        parent_space: Function space on the original mesh.
+    """
+
+    __slots__ = ("_part", "_number", "_parent_space", "_restriction_operator")
+
+    def __init__(
+        self,
+        function_space: ufl.FunctionSpace,
+        restriction_operator=None,
+        parent_coefficient: dolfinx.fem.Function | None = None,
+    ):
+        """Create a custom argument."""
+        super().__init__(function_space)
+        assert parent_coefficient is not None, "Parent coefficient must be provided"
+        assert restriction_operator is not None, "Restriction operator must be provided"
+        self._restriction_operator = restriction_operator
+        self._parent_coefficient = parent_coefficient
+
+    @property
+    def parent_coefficient(self) -> dolfinx.fem.Function:
+        """Return the parent space associated with this argument."""
+        return self._parent_coefficient
+
+    def __repr__(self) -> str:
+        return (
+            f"AveragedCoefficient({self.ufl_function_space()}, "
+            + f" restriction_operator={self._restriction_operator}, parent_coefficient={self._parent_coefficient})"
+        )
+
+    def __str__(self) -> str:
+        return self.__repr__()
+
+    @property
+    def restriction_operator(self):
+        return self._restriction_operator
+
+
 @ufl.core.ufl_type.ufl_type(
     num_ops=1, inherit_shape_from_operand=0, inherit_indices_from_operand=0
 )
@@ -77,7 +121,10 @@ class Average(ufl.core.operator.Operator):
 
     def __init__(self, u: ufl.Argument, restriction_operator, restriction_space):
         """Create a custom operator."""
-        assert isinstance(u, ufl.Argument), "Can only average arguments"
+        if not (isinstance(u, ufl.Argument) or isinstance(u, ufl.Coefficient)):
+            raise TypeError(
+                f"Can only average arguments or coefficients, got {type(u)}"
+            )
         self._u = u
         self._restriction_operator = restriction_operator
         self._restriction_space = restriction_space
@@ -184,6 +231,15 @@ class AverageReplacer(DAGTraverser):
             return ufl.operators.Zero(o.ufl_shape)
         elif isinstance(u, ufl.operators.Zero):
             return ufl.operators.Zero(o.ufl_shape)
+        elif isinstance(u, ufl.Coefficient):
+            res_op = o.restriction_operator
+            new_u = AveragedCoefficient(
+                o.restriction_space,
+                parent_coefficient=u,
+                restriction_operator=res_op,
+            )
+            return new_u
+
         else:
             raise NotImplementedError(f"Can only average arguments, got {type(u)}")
 

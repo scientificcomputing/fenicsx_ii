@@ -1,13 +1,13 @@
 from mpi4py import MPI
-from fenicsx_ii import Circle, PointwiseTrace
-from fenicsx_ii.assembly import assemble_matrix, assemble_vector
-from fenicsx_ii import Average
+from petsc4py import PETSc
+
+import basix.ufl
 import dolfinx
 import numpy as np
 import ufl
-import basix.ufl
-from petsc4py import PETSc
 
+from fenicsx_ii import Average, Circle, PointwiseTrace
+from fenicsx_ii.assembly import assemble_matrix, assemble_vector
 
 # We create a 3D mesh (a cube)
 M = 2**5
@@ -70,7 +70,7 @@ restriction_test = PointwiseTrace(line_mesh)
 dx_3D = ufl.Measure("dx", domain=volume)
 dx_1D = ufl.Measure("dx", domain=line_mesh)
 
-# We can define the intermediate space that we interpolate the 
+# We can define the intermediate space that we interpolate the
 # 3D arguments into
 
 q_degree = 10

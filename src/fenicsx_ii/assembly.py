@@ -1,3 +1,4 @@
+from mpi4py import MPI
 from petsc4py import PETSc
 
 import dolfinx.fem.petsc
@@ -5,9 +6,13 @@ import numpy as np
 import ufl
 
 from .interpolation import create_interpolation_matrix
-from .ufl_operations import apply_replacer, get_replaced_argument_indices
+from .ufl_operations import (
+    AveragedCoefficient,
+    apply_replacer,
+    get_replaced_argument_indices,
+)
 
-__all__ = ["assemble_matrix", "assemble_vector"]
+__all__ = ["assemble_matrix", "assemble_vector", "assemble_scalar"]
 
 
 def assign_LG_map(
@@ -95,7 +100,7 @@ def assemble_matrix_and_apply_restriction(
             form_compiler_options=form_compiler_options,
             jit_options=jit_options,
         )
-        # NOTE: Need to insert avgCoefficients here before assembling orginal matrix
+        average_coefficients(avg_form)
         A = dolfinx.fem.petsc.assemble_matrix(a_c)
         A.assemble()
 
@@ -257,7 +262,7 @@ def assemble_vector_and_apply_restriction(
             form_compiler_options=form_compiler_options,
             jit_options=jit_options,
         )
-        # NOTE: Need to insert avgCoefficients here before assembling orginal matrix
+        average_coefficients(avg_form)
         b = dolfinx.fem.petsc.assemble_vector(L_c)
         b.ghostUpdate(addv=PETSc.InsertMode.ADD_VALUES, mode=PETSc.ScatterMode.REVERSE)  # type: ignore
 
@@ -295,3 +300,87 @@ def assemble_vector_and_apply_restriction(
                     f"Unexpected replacement indices {replacement_indices}"
                 )
     return vec
+
+
+def assemble_vector(
+    L: ufl.Form,
+    bcs: list[dolfinx.fem.DirichletBC] | None = None,
+    form_compiler_options: dict | None = None,
+    jit_options: dict | None = None,
+) -> PETSc.Vec:
+    """Assemble a matrix from a UFL form.
+
+    Args:
+        b: Linear UFL form to assemble.
+    """
+    bcs = [] if bcs is None else bcs
+    num_arguments = len(L.arguments())
+    if num_arguments == 1:
+        b = assemble_vector_and_apply_restriction(
+            None, L, form_compiler_options, jit_options
+        )
+        space = L.arguments()[0].ufl_function_space()._cpp_object
+        for bc in bcs:
+            if bc.function_space == space:
+                dolfinx.fem.petsc.set_bc(b, [bc])
+        b.ghostUpdate(
+            addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD
+        )  # type: ignore
+        return b
+    else:
+        linear_form = ufl.extract_blocks(L)
+        num_spaces = len(linear_form)
+        b = [None for _ in range(num_spaces)]
+        for i in range(num_spaces):
+            if linear_form[i] is not None:
+                b[i] = assemble_vector_and_apply_restriction(
+                    b[i],
+                    linear_form[i],
+                    form_compiler_options,
+                    jit_options,
+                )
+                space = linear_form[i].arguments()[0].ufl_function_space()._cpp_object
+                for bc in bcs:
+                    if bc.function_space == space:
+                        dolfinx.fem.petsc.set_bc(b[i], [bc])
+                b[i].ghostUpdate(
+                    addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD
+                )  # type: ignore
+
+        return PETSc.Vec().createNest(b)  # type: ignore
+
+
+def average_coefficients(form: ufl.Form):
+    for coeff in form.coefficients():
+        if isinstance(coeff, AveragedCoefficient):
+            u = coeff.parent_coefficient
+            res_op = coeff.restriction_operator
+            # Replace rows, i.e. apply interpolation matrix on the left
+            K, _, _ = create_interpolation_matrix(
+                u.function_space,
+                coeff.function_space,
+                res_op,
+                use_petsc=True,
+            )
+            K.mult(u.x.petsc_vec, coeff.x.petsc_vec)
+        coeff.x.scatter_forward()
+
+
+def assemble_scalar(
+    form: ufl.Form,
+    form_compiler_options: dict | None = None,
+    jit_options: dict | None = None,
+    op: MPI.Op = MPI.SUM,
+) -> np.inexact:
+    new_forms = apply_replacer(form)
+    val = 0.0
+    for avg_form in new_forms:
+        L_c = dolfinx.fem.form(
+            avg_form,
+            form_compiler_options=form_compiler_options,
+            jit_options=jit_options,
+        )
+        average_coefficients(avg_form)
+        loc_val = dolfinx.fem.assemble_scalar(L_c)
+        val += L_c.mesh.comm.allreduce(loc_val, op=op)
+    return val
