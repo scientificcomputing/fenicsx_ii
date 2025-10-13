@@ -6,8 +6,15 @@ import dolfinx
 import numpy as np
 import ufl
 
-from fenicsx_ii import Average, Circle, PointwiseTrace
-from fenicsx_ii.assembly import assemble_matrix, assemble_vector
+from fenicsx_ii import (
+    Average,
+    Circle,
+    PointwiseTrace,
+    assemble_matrix,
+    assemble_vector,
+    create_matrix,
+    create_vector,
+)
 
 # We create a 3D mesh (a cube)
 M = 2**5
@@ -108,9 +115,11 @@ L = f * avg_v * dx_1D
 L += f * q * dx_1D
 
 # We assemble the arising linear system
+A = create_matrix(a)
+b = create_vector(L)
 
-A = assemble_matrix(a)
-b = assemble_vector(L)
+assemble_matrix(a, A=A)
+assemble_vector(L, b=b)
 
 # We create the ksp solver and solve the system
 ksp = PETSc.KSP().create(volume.comm)  # type: ignore
