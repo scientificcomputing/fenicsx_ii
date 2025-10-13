@@ -14,12 +14,12 @@ __all__ = ["assemble_matrix"]
 
 def assemble_matrix(
     a: ufl.Form,
-    bcs: list[dolfinx.fem.DirichletBC] | None = None,
+    bcs: typing.Sequence[dolfinx.fem.DirichletBC] | None = None,
     form_compiler_options: dict | None = None,
     jit_options: dict | None = None,
-    entity_maps: list[dolfinx.mesh.EntityMap] | None = None,
-    A: PETSc.Mat | None = None,
-) -> PETSc.Mat:
+    entity_maps: typing.Sequence[dolfinx.mesh.EntityMap] | None = None,
+    A: PETSc.Mat | None = None,  # type: ignore[name-defined]
+) -> PETSc.Mat:  # type: ignore[name-defined]
     """Assemble a bi-linear {py:class}`ufl.Form` into a {py:class}`petsc4py.PETSc.Mat`.
 
     The form might be a block form, in which case a nested matrix is returned.
@@ -86,12 +86,12 @@ def assemble_matrix(
 
 
 def assemble_matrix_and_apply_restriction(
-    matrix: None | PETSc.Mat,
+    matrix: None | PETSc.Mat,  # type: ignore[name-defined]
     form: ufl.Form,
     form_compiler_options: dict | None = None,
     jit_options: dict | None = None,
-    entity_maps: list[dolfinx.mesh.EntityMap] | None = None,
-) -> PETSc.Mat:
+    entity_maps: typing.Sequence[dolfinx.mesh.EntityMap] | None = None,
+) -> PETSc.Mat:  # type: ignore[name-defined]
     """Convenince function to assemble a matrix from a UFL form, applying any
     restriction operators on the test and trial functions.
 
@@ -129,10 +129,10 @@ def assemble_matrix_and_apply_restriction(
 
 def apply_matrix_replacer(
     a: ufl.Form,
-    get_matrix: typing.Callable[[ufl.Form], PETSc.Mat],
-    post_operation: typing.Callable[[PETSc.Mat], None] = lambda *args, **kwargs: None,
-    matrix: PETSc.Mat | None = None,
-) -> PETSc.Mat:
+    get_matrix: typing.Callable[[ufl.Form], PETSc.Mat],  # type: ignore[name-defined]
+    post_operation: typing.Callable[[PETSc.Mat], None] = lambda *args, **kwargs: None,  # type: ignore[name-defined]
+    matrix: PETSc.Mat | None = None,  # type: ignore[name-defined]
+) -> PETSc.Mat:  # type: ignore[name-defined]
     """
     Given a bi-linear form, replace all averaged coefficients and arguments
     by the corresponding {py:class}`fenicsx_ii.ufl_operations.AveragedCoefficient`
@@ -180,6 +180,7 @@ def apply_matrix_replacer(
                     test_arg.restriction_operator,
                     use_petsc=True,
                 )
+                assert isinstance(K, PETSc.Mat)  # type: ignore[attr-defined]
                 K.transpose()  # in-place transpose
                 D = K.matMult(A)
                 trial_space = trial_arg.ufl_function_space()
@@ -265,8 +266,8 @@ def create_submatrix(
     form: ufl.Form,
     form_compiler_options: dict | None = None,
     jit_options: dict | None = None,
-    entity_maps: list[dolfinx.mesh.EntityMap] | None = None,
-) -> PETSc.Mat:
+    entity_maps: typing.Sequence[dolfinx.mesh.EntityMap] | None = None,
+) -> PETSc.Mat:  # type: ignore[name-defined]
     """Convenince function to create a matrix from a UFL with the Average operators"""
 
     def create_restricted_matrix(form):
@@ -295,8 +296,8 @@ def create_matrix(
     a: ufl.Form,
     form_compiler_options: dict | None = None,
     jit_options: dict | None = None,
-    entity_maps: list[dolfinx.mesh.EntityMap] | None = None,
-) -> PETSc.Mat:
+    entity_maps: typing.Sequence[dolfinx.mesh.EntityMap] | None = None,
+) -> PETSc.Mat:  # type: ignore[name-defined]
     """Create a {py:class}`petsc4py.PETSc.Mat` from a {py:class}`ufl.Form`.
 
     The form might contain {py:class}`fenicsx_ii.Average` operators, in which case

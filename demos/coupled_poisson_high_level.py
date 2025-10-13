@@ -6,8 +6,7 @@ import dolfinx
 import numpy as np
 import ufl
 
-from fenicsx_ii import Average, Circle, PointwiseTrace
-from fenicsx_ii.assembly import assemble_matrix, assemble_vector
+from fenicsx_ii import Average, Circle, PointwiseTrace, assemble_matrix, assemble_vector
 
 # We create a 3D mesh (a cube)
 M = 2**5

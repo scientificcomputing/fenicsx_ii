@@ -130,8 +130,7 @@ class LinearProblem:
             form_compiler_options=form_compiler_options,
             jit_options=jit_options,
             entity_maps=entity_maps,
-        )  # type: ignore[arg-type
-
+        )
         self._u: dolfinx.fem.Function | Sequence[dolfinx.fem.Function]
         if u is None:
             # Extract function space for unknown from the right hand
@@ -250,10 +249,9 @@ class LinearProblem:
         # Solve linear system and update ghost values in the solution
         self.solver.solve(self.b, self.x)
         dolfinx.la.petsc._ghost_update(
-            # type: ignore[attr-defined]
             self.x,
-            PETSc.InsertMode.INSERT,
-            PETSc.ScatterMode.FORWARD,
+            PETSc.InsertMode.INSERT,  # type: ignore[attr-defined]
+            PETSc.ScatterMode.FORWARD,  # type: ignore[attr-defined]
         )
         dolfinx.fem.petsc.assign(self.x, self.u)
         return self.u

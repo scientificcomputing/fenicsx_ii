@@ -1,3 +1,5 @@
+import typing
+
 from mpi4py import MPI
 from petsc4py import PETSc
 
@@ -62,9 +64,9 @@ def assemble_scalar(
     form: ufl.Form,
     form_compiler_options: dict | None = None,
     jit_options: dict | None = None,
-    entity_maps: list[dolfinx.mesh.EntityMap] | None = None,
+    entity_maps: typing.Sequence[dolfinx.mesh.EntityMap] | None = None,
     op: MPI.Op = MPI.SUM,
-) -> np.inexact:
+) -> np.inexact | float | complex:
     new_forms = apply_replacer(form)
     val = 0.0
     for avg_form in new_forms:

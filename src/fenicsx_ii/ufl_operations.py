@@ -291,7 +291,7 @@ def apply_replacer(form: ufl.Form) -> ufl.Form:
     return [ufl.Form([mapped_integral]) for mapped_integral in mapped_integrals]
 
 
-def get_replaced_argument_indices(form: ufl.Form) -> list[int, ...]:
+def get_replaced_argument_indices(form: ufl.Form) -> list[int]:
     """Check if a form has a replaced argument."""
     indices = []
     for arg in form.arguments():

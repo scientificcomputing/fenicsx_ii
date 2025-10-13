@@ -14,12 +14,12 @@ __all__ = ["assemble_vector"]
 
 def assemble_vector(
     L: ufl.Form,
-    bcs: list[dolfinx.fem.DirichletBC] | None = None,
+    bcs: typing.Sequence[dolfinx.fem.DirichletBC] | None = None,
     form_compiler_options: dict | None = None,
     jit_options: dict | None = None,
-    entity_maps: list[dolfinx.mesh.EntityMap] | None = None,
-    b: PETSc.Vec | None = None,
-) -> PETSc.Vec:
+    entity_maps: typing.Sequence[dolfinx.mesh.EntityMap] | None = None,
+    b: PETSc.Vec | None = None,  # type: ignore[name-defined]
+) -> PETSc.Vec:  # type: ignore[name-defined]
     """Assemble a {py:class}`ufl.Form` into a {py:class}`petsc4py.PETSc.Vec`.
 
     The form might contain {py:class}`fenicsx_ii.Average` operators, in which case
@@ -58,8 +58,9 @@ def assemble_vector(
             if bc.function_space == space:
                 dolfinx.fem.petsc.set_bc(b, [bc])
         b.ghostUpdate(
-            addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD
-        )  # type: ignore
+            addv=PETSc.InsertMode.INSERT_VALUES,  # type: ignore[attr-defined]
+            mode=PETSc.ScatterMode.FORWARD,  # type: ignore[attr-defined]
+        )
         return b
     else:
         linear_form = ufl.extract_blocks(L)
@@ -80,20 +81,21 @@ def assemble_vector(
                     if bc.function_space == space:
                         dolfinx.fem.petsc.set_bc(_vecs[i], [bc])
                 _vecs[i].ghostUpdate(
-                    addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD
+                    addv=PETSc.InsertMode.INSERT_VALUES,  # type: ignore[attr-defined]
+                    mode=PETSc.ScatterMode.FORWARD,  # type: ignore[attr-defined]
                 )  # type: ignore
         [vec.destroy() for vec in _vecs]
         return b
 
 
 def assemble_vector_and_apply_restriction(
-    vec: None | PETSc.Vec,
+    vec: None | PETSc.Vec,  # type: ignore[name-defined]
     form: ufl.Form,
     form_compiler_options: dict | None = None,
     jit_options: dict | None = None,
-    entity_maps: list[dolfinx.mesh.EntityMap] | None = None,
-) -> PETSc.Vec:
-    def assemble_restricted_vector(form):
+    entity_maps: typing.Sequence[dolfinx.mesh.EntityMap] | None = None,
+) -> PETSc.Vec:  # type: ignore[name-defined]
+    def assemble_restricted_vector(form: ufl.Form) -> PETSc.Vec:  # type: ignore[name-defined]
         L_c = dolfinx.fem.form(
             form,
             form_compiler_options=form_compiler_options,
@@ -118,10 +120,10 @@ def assemble_vector_and_apply_restriction(
 
 def apply_vector_replacer(
     form: ufl.Form,
-    get_vector: typing.Callable[[ufl.Form, dict | None, dict | None], PETSc.Vec],
-    post_assembly: typing.Callable[[PETSc.Vec], None],
-    vec: PETSc.Vec | None = None,
-) -> PETSc.Vec:
+    get_vector: typing.Callable[[ufl.Form], PETSc.Vec],  # type: ignore[name-defined]
+    post_assembly: typing.Callable[[PETSc.Vec], None],  # type: ignore[name-defined]
+    vec: PETSc.Vec | None = None,  # type: ignore[name-defined]
+) -> PETSc.Vec:  # type: ignore[name-defined]
     """Given a linear form, replace all averaged coefficients and arguments
     by the corresponding {py:class}`fenicsx_ii.AveragedCoefficient` and
     {py:class}`fenicsx_ii.AveragedArgument` and assemble the resulting
@@ -164,6 +166,7 @@ def apply_vector_replacer(
                     test_arg.restriction_operator,
                     use_petsc=True,
                 )
+                assert isinstance(K, PETSc.Mat)  # type: ignore[attr-defined]
                 K.transpose()  # in-place transpose
 
                 z = dolfinx.fem.petsc.create_vector(
@@ -187,8 +190,8 @@ def create_subvector(
     form,
     form_compiler_options: dict | None = None,
     jit_options: dict | None = None,
-    entity_maps: list[dolfinx.mesh.EntityMap] | None = None,
-) -> PETSc.Mat:
+    entity_maps: typing.Sequence[dolfinx.mesh.EntityMap] | None = None,
+) -> PETSc.Vec:  # type: ignore[name-defined]
     """Convenince function to create a matrix from a UFL with the Average operators"""
 
     def create_restricted_matrix(form):
@@ -217,8 +220,8 @@ def create_vector(
     L: ufl.Form,
     form_compiler_options: dict | None = None,
     jit_options: dict | None = None,
-    entity_maps: list[dolfinx.mesh.EntityMap] | None = None,
-) -> PETSc.Vec:
+    entity_maps: typing.Sequence[dolfinx.mesh.EntityMap] | None = None,
+) -> PETSc.Vec:  # type: ignore[name-defined]
     """Create a {py:class}`petsc4py.PETSc.Vec` from a {py:class}`ufl.Form`.
 
     The form might contain {py:class}`fenicsx_ii.Average` operators, in which case
