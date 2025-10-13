@@ -115,11 +115,11 @@ L = f * avg_v * dx_1D
 L += f * q * dx_1D
 
 # We assemble the arising linear system
-A = create_matrix(a)
-b = create_vector(L)
+# A = create_matrix(a)
+# b = create_vector(L)
 
-assemble_matrix(a, A=A)
-assemble_vector(L, b=b)
+A = assemble_matrix(a)#, A=A)
+b = assemble_vector(L)#, b=b)
 
 # We create the ksp solver and solve the system
 ksp = PETSc.KSP().create(volume.comm)  # type: ignore

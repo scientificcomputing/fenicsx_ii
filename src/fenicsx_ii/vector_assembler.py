@@ -36,7 +36,7 @@ def assemble_vector(
     bcs = [] if bcs is None else bcs
     num_arguments = len(L.arguments())
     if b is None:
-        b = create_vector(b, form_compiler_options, jit_options)
+        b = create_vector(L, form_compiler_options, jit_options)
     if num_arguments == 1:
         assemble_vector_and_apply_restriction(b, L, form_compiler_options, jit_options)
         space = L.arguments()[0].ufl_function_space()._cpp_object
