@@ -22,7 +22,8 @@ class AveragedArgument(ufl.Argument):
         function_space: Function space on the new mesh.
         part: Part of the function space.
         number: Argument number.
-        restriction_operator: Operator that restricts from the parent space to this space.
+        restriction_operator: Operator that restricts from the parent
+            space to this space.
         parent_space: Function space on the original mesh.
     """
 
@@ -50,8 +51,10 @@ class AveragedArgument(ufl.Argument):
 
     def __repr__(self) -> str:
         return (
-            f"AveragedArgument({self.ufl_function_space()}, part={self._part}, number={self._number},"
-            + f" restriction_operator={self._restriction_operator}, parent_space={self._parent_space})"
+            f"AveragedArgument({self.ufl_function_space()}, part={self._part}"
+            + f", number={self._number},"
+            + f" restriction_operator={self._restriction_operator}"
+            + f", parent_space={self._parent_space})"
         )
 
     def __str__(self) -> str:
@@ -63,11 +66,13 @@ class AveragedArgument(ufl.Argument):
 
 
 class AveragedCoefficient(dolfinx.fem.Function):
-    """Coefficient that is restricted to a different mesh through a restriction operator.
+    """Coefficient that is restricted to a different mesh through a
+        restriction operator.
 
     Args:
         function_space: Function space on the new mesh.
-        restriction_operator: Operator that restricts from the parent space to this space.
+        restriction_operator: Operator that restricts from the parent
+            space to this space.
         parent_space: Function space on the original mesh.
     """
 
@@ -94,7 +99,8 @@ class AveragedCoefficient(dolfinx.fem.Function):
     def __repr__(self) -> str:
         return (
             f"AveragedCoefficient({self.ufl_function_space()}, "
-            + f" restriction_operator={self._restriction_operator}, parent_coefficient={self._parent_coefficient})"
+            + f" restriction_operator={self._restriction_operator}"
+            + f", parent_coefficient={self._parent_coefficient})"
         )
 
     def __str__(self) -> str:
@@ -113,7 +119,8 @@ class Average(ufl.core.operator.Operator):
 
     Args:
         u: Argument to be averaged.
-        restriction_operator: Operator that restricts from the parent space to the averaged space.
+        restriction_operator: Operator that restricts from the parent
+            space to the averaged space.
         restriction_space: Function space on the new mesh.
     """
 
@@ -141,7 +148,10 @@ class Average(ufl.core.operator.Operator):
         return self._hash
 
     def __repr__(self) -> str:
-        return f"Average({self._u}, {self._restriction_operator}, {self._restriction_space})"
+        return (
+            f"Average({self._u}, {self._restriction_operator}"
+            + f", {self._restriction_space})"
+        )
 
     def __str__(self) -> str:
         return self.__repr__()
@@ -179,7 +189,8 @@ class AverageReplacer(DAGTraverser):
 
         Args:
             compress: If True, ``result_cache`` will be used.
-            visited_cache: cache of intermediate results; expr -> r = self.process(expr, ...).
+            visited_cache: cache of intermediate results;
+                expr -> r = self.process(expr, ...).
             result_cache: cache of result objects for memory reuse, r -> r.
 
         """

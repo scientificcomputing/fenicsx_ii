@@ -92,7 +92,10 @@ class Circle:
         ).T
 
     def __str__(self) -> str:
-        return f"Circle({self._mesh}, radius={self._radius}, num_points={self._w.shape[0]})"
+        return (
+            f"Circle({self._mesh}, radius={self._radius}"
+            + f", num_points={self._w.shape[0]})"
+        )
 
     @property
     def num_points(self):

@@ -33,7 +33,8 @@ def assemble_vector(
         form_compiler_options: Options to pass to the form compiler.
         jit_options: Options to pass to the JIT compiler.
         entity_maps: Entity maps to use for assembly.
-        b: An optional PETSc vector to which the assembled vector is added. If None, a new vector is created.
+        b: An optional PETSc vector to which the assembled vector is added.
+            If None, a new vector is created.
     """
     bcs = [] if bcs is None else bcs
     num_arguments = len(L.arguments())
@@ -121,17 +122,21 @@ def apply_vector_replacer(
     post_assembly: typing.Callable[[PETSc.Vec], None],
     vec: PETSc.Vec | None = None,
 ) -> PETSc.Vec:
-    """Given a linear form, replace all averaged coefficients and arguments by the corresponding
-    {py:class}`fenicsx_ii.AveragedCoefficient` and {py:class}`fenicsx_ii.AveragedArgument`
-    and assemble the resulting form into a vector.
+    """Given a linear form, replace all averaged coefficients and arguments
+    by the corresponding {py:class}`fenicsx_ii.AveragedCoefficient` and
+    {py:class}`fenicsx_ii.AveragedArgument` and assemble the resulting
+    form into a vector.
 
     Args:
         form: The linear UFL form to assemble.
-        get_vector: A callable that takes a UFL form and returns the assembled PETSc vector
-        post_assembly: A callable that takes a PETSc vector and performs any post-assembly operations.
+        get_vector: A callable that takes a UFL form and returns the
+            assembled PETSc vector
+        post_assembly: A callable that takes a PETSc vector and performs any
+            post-assembly operations.
         form_compiler_options: Options to pass to the form compiler.
         jit_options: Options to pass to the JIT compiler.
-        vec: An optional PETSc vector to which the assembled vector is added. If None, a new vector is created.
+        vec: An optional PETSc vector to which the assembled vector is added. If None,
+            a new vector is created.
     Returns:
         The assembled PETSc vector.
     """

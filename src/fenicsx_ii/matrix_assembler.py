@@ -96,8 +96,8 @@ def assemble_matrix_and_apply_restriction(
     restriction operators on the test and trial functions.
 
     Args:
-        matrix: An optional PETSc matrix to which the resulting matrix is added. If `None`,
-            a new matrix is created.
+        matrix: An optional PETSc matrix to which the resulting matrix is added.
+            If `None`, a new matrix is created.
         form: Bi-linear UFL form to assemble.
         form_compiler_options: Options to pass to the form
         jit_options: Options to pass to the JIT compiler.
@@ -134,19 +134,22 @@ def apply_matrix_replacer(
     matrix: PETSc.Mat | None = None,
 ) -> PETSc.Mat:
     """
-    Given a bi-linear form, replace all averaged coefficients and arguments by the corresponding
-    {py:class}`fenicsx_ii.ufl_operations.AveragedCoefficient` and
-    {py:class}`fenicsx_ii.ufl_operations.ReplacedArgument` and apply the `get_matrix` function
-    to the resulting form(s). The `post_operation` function is then applied to each resulting
-    matrix, before combining them into a single matrix, which is returned.
+    Given a bi-linear form, replace all averaged coefficients and arguments
+    by the corresponding {py:class}`fenicsx_ii.ufl_operations.AveragedCoefficient`
+    and {py:class}`fenicsx_ii.ufl_operations.ReplacedArgument` and apply the
+    `get_matrix` function to the resulting form(s).
+    The `post_operation` function is then applied to each resulting matrix,
+    before combining them into a single matrix, which is returned.
 
     Args:
         a: The bi-linear form to process.
         get_matrix: A function that takes a UFL form and returns a PETSc matrix.
-        post_operation: A function that takes a PETSc matrix and performs some operation on it.
+        post_operation: A function that takes a PETSc matrix and performs some
+            operation on it.
         form_compiler_options: Options to pass to the form compiler.
         jit_options: Options to pass to the JIT compiler.
-        matrix: An optional PETSc matrix to which the resulting matrix is added. If None, a new matrix is created.
+        matrix: An optional PETSc matrix to which the resulting matrix is added.
+            If None, a new matrix is created.
 
     Returns:
         The resulting PETSc matrix.
@@ -218,7 +221,8 @@ def apply_matrix_replacer(
                     matrix.axpy(1.0, D)
 
             case [0, 1]:
-                # Replace both rows and columns, i.e. apply interpolation matrix on both sides
+                # Replace both rows and columns, i.e. apply interpolation
+                # matrix on both sides.
                 # Start by replacing rows, multiplying by P.T from
                 P, _, _ = create_interpolation_matrix(
                     test_arg.parent_space,
