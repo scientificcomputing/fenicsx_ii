@@ -1,13 +1,11 @@
 from mpi4py import MPI
-from petsc4py import PETSc
 
 import basix.ufl
 import dolfinx
 import numpy as np
 import ufl
 
-from fenicsx_ii import Average, Circle, PointwiseTrace
-from fenicsx_ii.assembly import assemble_matrix, assemble_vector
+from fenicsx_ii import Average, Circle, LinearProblem, PointwiseTrace
 
 # We create a 3D mesh (a cube)
 M = 2**5
@@ -107,33 +105,23 @@ f = ufl.sin(x[2])
 L = f * avg_v * dx_1D
 L += f * q * dx_1D
 
-
-A = assemble_matrix(a)
-b = assemble_vector(L)
-
-# We create the ksp solver and solve the system
-ksp = PETSc.KSP().create(volume.comm)  # type: ignore
-ksp.setOperators(A)
-ksp.setType("preonly")
-pc = ksp.getPC()
-pc.setType("lu")
-pc.setFactorSolverType("mumps")
-ksp.setErrorIfNotConverged(True)
-u_vec = b.duplicate()
-ksp.solve(b, u_vec)
-ksp.destroy()
+# We assemble the arising linear system
+uh = dolfinx.fem.Function(V, name="u_3D")
+ph = dolfinx.fem.Function(Q, name="p_1D")
+petsc_options = {
+    "ksp_type": "preonly",
+    "pc_type": "lu",
+    "pc_factor_mat_solver_type": "mumps",
+}
+problem = LinearProblem(
+    a, L, petsc_options_prefix="coupled_poisson", petsc_options=petsc_options
+)
+uh, ph = problem.solve()
 
 # We move the solution to a Function and save to file
 
-uh = dolfinx.fem.Function(V)
-ph = dolfinx.fem.Function(Q)
-dolfinx.fem.petsc.assign(u_vec, [uh, ph])
-ph.x.scatter_forward()
-uh.x.scatter_forward()
-uh.name = "u_3D"
-ph.name = "p_1D"
 
-with dolfinx.io.VTXWriter(volume.comm, "u_3D_HL.bp", [uh]) as vtx:
+with dolfinx.io.VTXWriter(volume.comm, "u_3D_solver.bp", [uh]) as vtx:
     vtx.write(0.0)
-with dolfinx.io.VTXWriter(line_mesh.comm, "p_1D_HL.bp", [ph]) as vtx:
+with dolfinx.io.VTXWriter(line_mesh.comm, "p_1D_solver.bp", [ph]) as vtx:
     vtx.write(0.0)

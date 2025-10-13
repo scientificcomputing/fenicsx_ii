@@ -62,6 +62,7 @@ def assemble_scalar(
     form: ufl.Form,
     form_compiler_options: dict | None = None,
     jit_options: dict | None = None,
+    entity_maps: list[dolfinx.mesh.EntityMap] | None = None,
     op: MPI.Op = MPI.SUM,
 ) -> np.inexact:
     new_forms = apply_replacer(form)

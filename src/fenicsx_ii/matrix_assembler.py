@@ -17,6 +17,7 @@ def assemble_matrix(
     bcs: list[dolfinx.fem.DirichletBC] | None = None,
     form_compiler_options: dict | None = None,
     jit_options: dict | None = None,
+    entity_maps: list[dolfinx.mesh.EntityMap] | None = None,
     A: PETSc.Mat | None = None,
 ) -> PETSc.Mat:
     """Assemble a bi-linear {py:class}`ufl.Form` into a {py:class}`petsc4py.PETSc.Mat`.
@@ -34,10 +35,21 @@ def assemble_matrix(
     bcs = [] if bcs is None else bcs
     num_arguments = len(a.arguments())
     if A is None:
-        A = create_matrix(a, form_compiler_options, jit_options)
+        A = create_matrix(
+            a,
+            form_compiler_options=form_compiler_options,
+            jit_options=jit_options,
+            entity_maps=entity_maps,
+        )
 
     if num_arguments == 2:
-        assemble_matrix_and_apply_restriction(A, a, form_compiler_options, jit_options)
+        assemble_matrix_and_apply_restriction(
+            A,
+            a,
+            form_compiler_options=form_compiler_options,
+            jit_options=jit_options,
+            entity_maps=entity_maps,
+        )
         # Unsymmetric application of Dirichlet BCs
         spaces = [arg.ufl_function_space()._cpp_object for arg in a.arguments()]
         on_diagonal = float(spaces[0] == spaces[1])
@@ -56,8 +68,9 @@ def assemble_matrix(
                     assemble_matrix_and_apply_restriction(
                         Aij,
                         bilinear_form[i][j],
-                        form_compiler_options,
-                        jit_options,
+                        form_compiler_options=form_compiler_options,
+                        jit_options=jit_options,
+                        entity_maps=entity_maps,
                     )
                     # Unsymmetric application of Dirichlet BCs
                     spaces = [
@@ -77,6 +90,7 @@ def assemble_matrix_and_apply_restriction(
     form: ufl.Form,
     form_compiler_options: dict | None = None,
     jit_options: dict | None = None,
+    entity_maps: list[dolfinx.mesh.EntityMap] | None = None,
 ) -> PETSc.Mat:
     """Convenince function to assemble a matrix from a UFL form, applying any
     restriction operators on the test and trial functions.
@@ -87,13 +101,15 @@ def assemble_matrix_and_apply_restriction(
         form: Bi-linear UFL form to assemble.
         form_compiler_options: Options to pass to the form
         jit_options: Options to pass to the JIT compiler.
+        entity_maps: Entity maps to use for assembly.
     """
 
-    def assemble_restricted_matrix(form, form_compiler_options, jit_options):
+    def assemble_restricted_matrix(form):
         a_c = dolfinx.fem.form(
             form,
             form_compiler_options=form_compiler_options,
             jit_options=jit_options,
+            entity_maps=entity_maps,
         )
         average_coefficients(form)
         A = dolfinx.fem.petsc.assemble_matrix(a_c)
@@ -106,8 +122,6 @@ def assemble_matrix_and_apply_restriction(
         form,
         assemble_restricted_matrix,
         post_assembly,
-        form_compiler_options,
-        jit_options,
         matrix,
     )
     return A
@@ -115,10 +129,8 @@ def assemble_matrix_and_apply_restriction(
 
 def apply_matrix_replacer(
     a: ufl.Form,
-    get_matrix: typing.Callable[[ufl.Form, dict | None, dict | None], PETSc.Mat],
+    get_matrix: typing.Callable[[ufl.Form], PETSc.Mat],
     post_operation: typing.Callable[[PETSc.Mat], None] = lambda *args, **kwargs: None,
-    form_compiler_options: dict | None = None,
-    jit_options: dict | None = None,
     matrix: PETSc.Mat | None = None,
 ) -> PETSc.Mat:
     """
@@ -146,7 +158,7 @@ def apply_matrix_replacer(
         )
     new_forms = apply_replacer(a)
     for avg_form in new_forms:
-        A = get_matrix(avg_form, form_compiler_options, jit_options)
+        A = get_matrix(avg_form)
         post_operation(A)
         test_arg, trial_arg = avg_form.arguments()
         replacement_indices = get_replaced_argument_indices(avg_form)
@@ -245,14 +257,20 @@ def apply_matrix_replacer(
     return matrix
 
 
-def create_submatrix(form, form_compiler_options=None, jit_options=None) -> PETSc.Mat:
+def create_submatrix(
+    form: ufl.Form,
+    form_compiler_options: dict | None = None,
+    jit_options: dict | None = None,
+    entity_maps: list[dolfinx.mesh.EntityMap] | None = None,
+) -> PETSc.Mat:
     """Convenince function to create a matrix from a UFL with the Average operators"""
 
-    def create_restricted_matrix(form, form_compiler_options, jit_options):
+    def create_restricted_matrix(form):
         a_c = dolfinx.fem.form(
             form,
             form_compiler_options=form_compiler_options,
             jit_options=jit_options,
+            entity_maps=entity_maps,
         )
         A = dolfinx.fem.petsc.create_matrix(a_c)
         return A
@@ -264,9 +282,7 @@ def create_submatrix(form, form_compiler_options=None, jit_options=None) -> PETS
         form,
         create_restricted_matrix,
         post_assembly,
-        form_compiler_options,
-        jit_options,
-        None,
+        matrix=None,
     )
     return A
 
@@ -275,6 +291,7 @@ def create_matrix(
     a: ufl.Form,
     form_compiler_options: dict | None = None,
     jit_options: dict | None = None,
+    entity_maps: list[dolfinx.mesh.EntityMap] | None = None,
 ) -> PETSc.Mat:
     """Create a {py:class}`petsc4py.PETSc.Mat` from a {py:class}`ufl.Form`.
 
@@ -290,7 +307,9 @@ def create_matrix(
     """
     num_arguments = len(a.arguments())
     if num_arguments == 2:
-        return create_submatrix(a, form_compiler_options, jit_options)
+        return create_submatrix(
+            a, form_compiler_options, jit_options, entity_maps=entity_maps
+        )
     else:
         bilinear_form = ufl.extract_blocks(a)
         num_spaces = len(bilinear_form)
@@ -302,5 +321,6 @@ def create_matrix(
                         bilinear_form[i][j],
                         form_compiler_options,
                         jit_options,
+                        entity_maps=entity_maps,
                     )
         return PETSc.Mat().createNest(A)  # type: ignore

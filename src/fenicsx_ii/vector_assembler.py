@@ -17,6 +17,7 @@ def assemble_vector(
     bcs: list[dolfinx.fem.DirichletBC] | None = None,
     form_compiler_options: dict | None = None,
     jit_options: dict | None = None,
+    entity_maps: list[dolfinx.mesh.EntityMap] | None = None,
     b: PETSc.Vec | None = None,
 ) -> PETSc.Vec:
     """Assemble a {py:class}`ufl.Form` into a {py:class}`petsc4py.PETSc.Vec`.
@@ -31,14 +32,26 @@ def assemble_vector(
         bcs: List of Dirichlet boundary conditions to apply.
         form_compiler_options: Options to pass to the form compiler.
         jit_options: Options to pass to the JIT compiler.
+        entity_maps: Entity maps to use for assembly.
         b: An optional PETSc vector to which the assembled vector is added. If None, a new vector is created.
     """
     bcs = [] if bcs is None else bcs
     num_arguments = len(L.arguments())
     if b is None:
-        b = create_vector(L, form_compiler_options, jit_options)
+        b = create_vector(
+            L,
+            form_compiler_options=form_compiler_options,
+            jit_options=jit_options,
+            entity_maps=entity_maps,
+        )
     if num_arguments == 1:
-        assemble_vector_and_apply_restriction(b, L, form_compiler_options, jit_options)
+        assemble_vector_and_apply_restriction(
+            b,
+            L,
+            form_compiler_options=form_compiler_options,
+            jit_options=jit_options,
+            entity_maps=entity_maps,
+        )
         space = L.arguments()[0].ufl_function_space()._cpp_object
         for bc in bcs:
             if bc.function_space == space:
@@ -57,8 +70,9 @@ def assemble_vector(
                 assemble_vector_and_apply_restriction(
                     _vecs[i],
                     linear_form[i],
-                    form_compiler_options,
-                    jit_options,
+                    form_compiler_options=form_compiler_options,
+                    jit_options=jit_options,
+                    entity_maps=entity_maps,
                 )
                 space = linear_form[i].arguments()[0].ufl_function_space()._cpp_object
                 for bc in bcs:
@@ -76,12 +90,14 @@ def assemble_vector_and_apply_restriction(
     form: ufl.Form,
     form_compiler_options: dict | None = None,
     jit_options: dict | None = None,
+    entity_maps: list[dolfinx.mesh.EntityMap] | None = None,
 ) -> PETSc.Vec:
-    def assemble_restricted_vector(form, form_compiler_options, jit_options):
+    def assemble_restricted_vector(form):
         L_c = dolfinx.fem.form(
             form,
             form_compiler_options=form_compiler_options,
             jit_options=jit_options,
+            entity_maps=entity_maps,
         )
         average_coefficients(form)
         b = dolfinx.fem.petsc.assemble_vector(L_c)
@@ -94,8 +110,6 @@ def assemble_vector_and_apply_restriction(
         form,
         assemble_restricted_vector,
         post_assembly,
-        form_compiler_options,
-        jit_options,
         vec,
     )
     return b
@@ -105,8 +119,6 @@ def apply_vector_replacer(
     form: ufl.Form,
     get_vector: typing.Callable[[ufl.Form, dict | None, dict | None], PETSc.Vec],
     post_assembly: typing.Callable[[PETSc.Vec], None],
-    form_compiler_options: dict | None = None,
-    jit_options: dict | None = None,
     vec: PETSc.Vec | None = None,
 ) -> PETSc.Vec:
     """Given a linear form, replace all averaged coefficients and arguments by the corresponding
@@ -127,7 +139,7 @@ def apply_vector_replacer(
         raise ValueError("The form must have exactly one argument.")
     new_forms = apply_replacer(form)
     for avg_form in new_forms:
-        b = get_vector(avg_form, form_compiler_options, jit_options)
+        b = get_vector(avg_form)
         post_assembly(b)
 
         replacement_indices = get_replaced_argument_indices(avg_form)
@@ -167,17 +179,21 @@ def apply_vector_replacer(
 
 
 def create_subvector(
-    form, form_compiler_options: dict | None = None, jit_options: dict | None = None
+    form,
+    form_compiler_options: dict | None = None,
+    jit_options: dict | None = None,
+    entity_maps: list[dolfinx.mesh.EntityMap] | None = None,
 ) -> PETSc.Mat:
     """Convenince function to create a matrix from a UFL with the Average operators"""
 
-    def create_restricted_matrix(form, form_compiler_options, jit_options):
+    def create_restricted_matrix(form):
         b_c = dolfinx.fem.form(
             form,
             form_compiler_options=form_compiler_options,
             jit_options=jit_options,
+            entity_maps=entity_maps,
         )
-        b = dolfinx.fem.petsc.create_vector(form.arguments()[0].ufl_function_space())
+        b = dolfinx.fem.petsc.create_vector(b_c.function_spaces[0])
         return b
 
     def post_assembly(b):
@@ -187,9 +203,7 @@ def create_subvector(
         form,
         create_restricted_matrix,
         post_assembly,
-        form_compiler_options,
-        jit_options,
-        None,
+        vec=None,
     )
     return b
 
@@ -198,6 +212,7 @@ def create_vector(
     L: ufl.Form,
     form_compiler_options: dict | None = None,
     jit_options: dict | None = None,
+    entity_maps: list[dolfinx.mesh.EntityMap] | None = None,
 ) -> PETSc.Vec:
     """Create a {py:class}`petsc4py.PETSc.Vec` from a {py:class}`ufl.Form`.
 
@@ -213,7 +228,7 @@ def create_vector(
     """
     num_arguments = len(L.arguments())
     if num_arguments == 1:
-        return create_subvector(L, form_compiler_options, jit_options)
+        return create_subvector(L, form_compiler_options, jit_options, entity_maps)
     else:
         linear_form = ufl.extract_blocks(L)
         num_spaces = len(linear_form)
@@ -221,6 +236,6 @@ def create_vector(
         for i in range(num_spaces):
             if linear_form[i] is not None:
                 b[i] = create_subvector(
-                    linear_form[i], form_compiler_options, jit_options
+                    linear_form[i], form_compiler_options, jit_options, entity_maps
                 )
         return PETSc.Vec().createNest(b)  # type: ignore
