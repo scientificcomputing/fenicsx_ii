@@ -232,26 +232,26 @@ class AverageReplacer(DAGTraverser):
         u = ops[0]
         if isinstance(u, ufl.Argument):
             res_op = o.restriction_operator
-            new_u = AveragedArgument(
+            new_arg = AveragedArgument(
                 o.restriction_space,
                 part=u.part(),
                 number=u.number(),
                 parent_space=u.ufl_function_space(),
                 restriction_operator=res_op,
             )
-            return new_u
+            return new_arg
         elif isinstance(u, ufl.constantvalue.Zero):
             return ufl.operators.Zero(o.ufl_shape)
         elif isinstance(u, ufl.operators.Zero):
             return ufl.operators.Zero(o.ufl_shape)
         elif isinstance(u, dolfinx.fem.Function):
             res_op = o.restriction_operator
-            new_u = AveragedCoefficient(
+            new_coeff = AveragedCoefficient(
                 o.restriction_space,
                 parent_coefficient=u,
                 restriction_operator=res_op,
             )
-            return new_u
+            return new_coeff
 
         else:
             raise NotImplementedError(f"Can only average arguments, got {type(u)}")
