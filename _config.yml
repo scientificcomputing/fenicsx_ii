@@ -20,6 +20,11 @@ repository:
 html:
   use_issues_button: true
   use_repository_button: true
+  extra_footer: |
+    <div>
+        This software package has been developed by Jørgen S. Dokken while employed at Simula Research Laboratory.
+        It is licensed under the MIT License. The work has been funded by the Wellcome Trust, grant number 313298/Z/24/Z.
+    </div>
 
 parse:
   myst_enable_extensions:
@@ -58,6 +63,7 @@ sphinx:
       pyvista: ["https://docs.pyvista.org/", null]
       packaging: ["https://packaging.pypa.io/en/stable/", null]
       scifem: ["https://scientificcomputing.github.io/scifem/", null]
+
 
 
 exclude_patterns: [".pytest_cache/*" ,"tests", venv, .vcode, .ruff_cache, .github, .git]
