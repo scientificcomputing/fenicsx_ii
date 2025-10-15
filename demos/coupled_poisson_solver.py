@@ -248,16 +248,3 @@ if MPI.COMM_WORLD.rank == 0:
     print(f"L2-error p: {L2_error_p:.6e}")
     print(f"H1-error u: {H1_error_u:.6e}")
     print(f"H1-error p: {H1_error_p:.6e}")
-
-file = Path("results.csv")
-row = f"{degree:d},{q_degree:d},{h_vol:.6e},{H1_error_u:.6e},{L2_error_u:.6e},{h_line:.6e},{H1_error_p:.6e},{L2_error_p:.6e}"
-if file.exists():
-    with file.open("a") as f:
-        print(row, file=f)
-else:
-    with file.open("w") as f:
-        print(
-            "degree,q_degree,h_vol,H1_error_u,L2_error_u,h_line,H1_error_p,L2_error_p",
-            file=f,
-        )
-        print(row, file=f)
