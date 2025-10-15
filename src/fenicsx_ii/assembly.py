@@ -68,7 +68,7 @@ def assemble_scalar(
     op: MPI.Op = MPI.SUM,
 ) -> np.inexact | float | complex:
     new_forms = apply_replacer(form)
-    loc_val = 0.0
+    loc_val: float | complex = 0.0
     for avg_form in new_forms:
         L_c = dolfinx.fem.form(
             avg_form,
