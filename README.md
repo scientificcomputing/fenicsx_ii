@@ -18,6 +18,12 @@ The restrictions implemented in {py:mod}`fenicsx_ii` is:
 
 Any other operator can be implenmented by following the {py:class}`ReductionOperator<fenicsx_ii.ReductionOperator>`-protocol.
 
+## Funding
+The development of FEniCSx_ii has been funded by the Wellcome Trust,
+grant number: 313298/Z/24/Z
+
+## References
+
 ```{bibliography}
 :filter: cited
 :labelprefix:
