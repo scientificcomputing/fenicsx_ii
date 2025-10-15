@@ -228,6 +228,7 @@ class LinearProblem:
         # Assemble preconditioner
         if self.P_mat is not None:
             self.P_mat.zeroEntries()
+            assert isinstance(self._P, ufl.Form)
             assemble_matrix(
                 self._P,
                 bcs=self.bcs,

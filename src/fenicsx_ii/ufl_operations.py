@@ -12,6 +12,8 @@ from ufl.algorithms.map_integrands import map_integrands
 from ufl.corealg.dag_traverser import DAGTraverser
 from ufl.domain import extract_unique_domain
 
+from .restriction_operators import ReductionOperator
+
 __all__ = ["Average", "get_replaced_argument_indices", "apply_replacer"]
 
 
@@ -34,7 +36,7 @@ class AveragedArgument(ufl.Argument):
         function_space: ufl.FunctionSpace,
         part: int | None = None,
         number: int = 0,
-        restriction_operator=None,
+        restriction_operator: ReductionOperator | None = None,
         parent_space: ufl.FunctionSpace | None = None,
     ):
         """Create a custom argument."""
@@ -80,8 +82,8 @@ class AveragedCoefficient(dolfinx.fem.Function):
 
     def __init__(
         self,
-        function_space: ufl.FunctionSpace,
-        restriction_operator=None,
+        function_space: dolfinx.fem.FunctionSpace,
+        restriction_operator: ReductionOperator | None = None,
         parent_coefficient: dolfinx.fem.Function | None = None,
     ):
         """Create a custom argument."""
@@ -219,7 +221,7 @@ class AverageReplacer(DAGTraverser):
     @process.register(Average)
     def _(
         self,
-        o: ufl.core.expr.Expr,
+        o: Average,
         reference_value: bool | None = False,
         reference_grad: int | None = 0,
         restricted: str | None = None,
@@ -242,7 +244,7 @@ class AverageReplacer(DAGTraverser):
             return ufl.operators.Zero(o.ufl_shape)
         elif isinstance(u, ufl.operators.Zero):
             return ufl.operators.Zero(o.ufl_shape)
-        elif isinstance(u, ufl.Coefficient):
+        elif isinstance(u, dolfinx.fem.Function):
             res_op = o.restriction_operator
             new_u = AveragedCoefficient(
                 o.restriction_space,
@@ -271,7 +273,7 @@ class AverageReplacer(DAGTraverser):
         )
 
 
-def apply_replacer(form: ufl.Form) -> ufl.Form:
+def apply_replacer(form: ufl.Form) -> list[ufl.Form]:
     """Replace averaged arguments with intermediate space.
 
     Args:
