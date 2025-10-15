@@ -68,14 +68,15 @@ def assemble_scalar(
     op: MPI.Op = MPI.SUM,
 ) -> np.inexact | float | complex:
     new_forms = apply_replacer(form)
-    val = 0.0
+    loc_val = 0.0
     for avg_form in new_forms:
         L_c = dolfinx.fem.form(
             avg_form,
             form_compiler_options=form_compiler_options,
             jit_options=jit_options,
+            entity_maps=entity_maps,
         )
         average_coefficients(avg_form)
-        loc_val = dolfinx.fem.assemble_scalar(L_c)
-        val += L_c.mesh.comm.allreduce(loc_val, op=op)
+        loc_val += dolfinx.fem.assemble_scalar(L_c)
+    val = L_c.mesh.comm.allreduce(loc_val, op=op)
     return val

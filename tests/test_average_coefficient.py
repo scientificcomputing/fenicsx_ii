@@ -158,18 +158,23 @@ def test_circle_average_coefficient():
     J_gamma = assemble_scalar(J)
 
     # Symbolic integration of cylinder
-    x, y, z, R_s, Z_lower, Z_upper = sp.symbols("x y z R Z_lower Z_upper")
-    integral_result = sp.integrate(
-        1 / (sp.pi * R_s**2) * f([x, y, z]),
-        (z, Z_lower, Z_upper),
-        (
-            y,
-            y_c - sp.sqrt(R_s**2 - (x - x_c) ** 2),
-            y_c + sp.sqrt(R_s**2 - (x - x_c) ** 2),
-        ),
-        (x, x_c - R_s, x_c + R_s),
+    if domain.comm.rank == 0:
+        x, y, z, R_s, Z_lower, Z_upper = sp.symbols("x y z R Z_lower Z_upper")
+        integral_result = sp.integrate(
+            1 / (sp.pi * R_s**2) * f([x, y, z]),
+            (z, Z_lower, Z_upper),
+            (
+                y,
+                y_c - sp.sqrt(R_s**2 - (x - x_c) ** 2),
+                y_c + sp.sqrt(R_s**2 - (x - x_c) ** 2),
+            ),
+            (x, x_c - R_s, x_c + R_s),
+        )
+        float_result = complex(
+            integral_result.subs({R_s: R, Z_lower: c_min, Z_upper: c_max})
+        ).real
+    reference = domain.comm.bcast(
+        float_result if domain.comm.rank == 0 else None, root=0
     )
-    float_result = complex(
-        integral_result.subs({R_s: R, Z_lower: c_min, Z_upper: c_max})
-    )
-    np.testing.assert_allclose(float_result.real, J_gamma)
+
+    np.testing.assert_allclose(reference, J_gamma)
