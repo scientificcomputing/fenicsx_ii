@@ -81,11 +81,9 @@ def assemble_vector(
                     if bc.function_space == space:
                         dolfinx.fem.petsc.set_bc(_vecs[i], [bc])
                 _vecs[i].ghostUpdate(
-                    # type: ignore[attr-defined]
-                    addv=PETSc.InsertMode.INSERT_VALUES,
-                    # type: ignore[attr-defined]
-                    mode=PETSc.ScatterMode.FORWARD,
-                )  # type: ignore
+                    addv=PETSc.InsertMode.INSERT_VALUES,  # type: ignore[attr-defined]
+                    mode=PETSc.ScatterMode.FORWARD,  # type: ignore[attr-defined]
+                )
         [vec.destroy() for vec in _vecs]
         return b
 
@@ -97,8 +95,7 @@ def assemble_vector_and_apply_restriction(
     jit_options: dict | None = None,
     entity_maps: typing.Sequence[dolfinx.mesh.EntityMap] | None = None,
 ) -> PETSc.Vec:  # type: ignore[name-defined]
-    # type: ignore[name-defined]
-    def assemble_restricted_vector(form: ufl.Form) -> PETSc.Vec:
+    def assemble_restricted_vector(form: ufl.Form) -> PETSc.Vec:  # type: ignore[name-defined]
         L_c = dolfinx.fem.form(
             form,
             form_compiler_options=form_compiler_options,
@@ -122,11 +119,9 @@ def assemble_vector_and_apply_restriction(
 
 
 def apply_vector_replacer(
-    form: ufl.Form,
-    # type: ignore[name-defined]
-    get_vector: typing.Callable[[ufl.Form], PETSc.Vec],
-    # type: ignore[name-defined]
-    post_assembly: typing.Callable[[PETSc.Vec], None],
+    form: ufl.Form,  # type: ignore[name-defined]
+    get_vector: typing.Callable[[ufl.Form], PETSc.Vec],  # type: ignore[name-defined]
+    post_assembly: typing.Callable[[PETSc.Vec], None],  # type: ignore[name-defined]
     vec: PETSc.Vec | None = None,  # type: ignore[name-defined]
 ) -> PETSc.Vec:  # type: ignore[name-defined]
     """Given a linear form, replace all averaged coefficients and arguments

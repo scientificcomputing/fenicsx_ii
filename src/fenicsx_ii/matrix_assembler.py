@@ -129,10 +129,8 @@ def assemble_matrix_and_apply_restriction(
 
 def apply_matrix_replacer(
     a: ufl.Form,
-    # type: ignore[name-defined]
-    get_matrix: typing.Callable[[ufl.Form], PETSc.Mat],
-    # type: ignore[name-defined]
-    post_operation: typing.Callable[[PETSc.Mat], None] = lambda *args, **kwargs: None,
+    get_matrix: typing.Callable[[ufl.Form], PETSc.Mat],  # type: ignore[name-defined]
+    post_operation: typing.Callable[[PETSc.Mat], None] = lambda *args, **kwargs: None,  # type: ignore[name-defined]
     matrix: PETSc.Mat | None = None,  # type: ignore[name-defined]
 ) -> PETSc.Mat:  # type: ignore[name-defined]
     """
