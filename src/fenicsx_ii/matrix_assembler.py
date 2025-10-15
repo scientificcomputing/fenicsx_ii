@@ -20,7 +20,7 @@ def assemble_matrix(
     entity_maps: typing.Sequence[dolfinx.mesh.EntityMap] | None = None,
     A: PETSc.Mat | None = None,  # type: ignore[name-defined]
 ) -> PETSc.Mat:  # type: ignore[name-defined]
-    """Assemble a bi-linear {py:class}`ufl.Form` into a {py:class}`petsc4py.PETSc.Mat`.
+    """Assemble a bi-linear :py:class:`ufl.Form` into a :py:class:`petsc4py.PETSc.Mat`.
 
     The form might be a block form, in which case a nested matrix is returned.
 
@@ -129,14 +129,16 @@ def assemble_matrix_and_apply_restriction(
 
 def apply_matrix_replacer(
     a: ufl.Form,
-    get_matrix: typing.Callable[[ufl.Form], PETSc.Mat],  # type: ignore[name-defined]
-    post_operation: typing.Callable[[PETSc.Mat], None] = lambda *args, **kwargs: None,  # type: ignore[name-defined]
+    # type: ignore[name-defined]
+    get_matrix: typing.Callable[[ufl.Form], PETSc.Mat],
+    # type: ignore[name-defined]
+    post_operation: typing.Callable[[PETSc.Mat], None] = lambda *args, **kwargs: None,
     matrix: PETSc.Mat | None = None,  # type: ignore[name-defined]
 ) -> PETSc.Mat:  # type: ignore[name-defined]
     """
     Given a bi-linear form, replace all averaged coefficients and arguments
-    by the corresponding {py:class}`fenicsx_ii.ufl_operations.AveragedCoefficient`
-    and {py:class}`fenicsx_ii.ufl_operations.ReplacedArgument` and apply the
+    by the corresponding :py:class:`fenicsx_ii.ufl_operations.AveragedCoefficient`
+    and :py:class:`fenicsx_ii.ufl_operations.ReplacedArgument` and apply the
     `get_matrix` function to the resulting form(s).
     The `post_operation` function is then applied to each resulting matrix,
     before combining them into a single matrix, which is returned.
@@ -298,9 +300,9 @@ def create_matrix(
     jit_options: dict | None = None,
     entity_maps: typing.Sequence[dolfinx.mesh.EntityMap] | None = None,
 ) -> PETSc.Mat:  # type: ignore[name-defined]
-    """Create a {py:class}`petsc4py.PETSc.Mat` from a {py:class}`ufl.Form`.
+    """Create a :py:class:`petsc4py.PETSc.Mat` from a :py:class:`ufl.Form`.
 
-    The form might contain {py:class}`fenicsx_ii.Average` operators, in which case
+    The form might contain :py:class:`fenicsx_ii.Average` operators, in which case
     the appropriate restriction operators are applied to the test and trial functions
     before creating the matrix. The form might also be a block form, in which case
     a nested matrix is created.

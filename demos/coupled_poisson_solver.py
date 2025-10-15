@@ -2,7 +2,6 @@
 #
 # This example is based on the manufactured solution from {cite}`masri2024coupled3d1d`.
 
-
 from mpi4py import MPI
 
 import basix.ufl
@@ -13,11 +12,13 @@ import ufl
 from fenicsx_ii import Average, Circle, LinearProblem
 
 # We create a 3D mesh (a cube)
-M = 2**5
-N = 2 * M
-
+M = 64
+N = M
 volume = dolfinx.mesh.create_box(
-    MPI.COMM_WORLD, [[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]], [M, M, M], cell_type=dolfinx.mesh.CellType.tetrahedron
+    MPI.COMM_WORLD,
+    [[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]],
+    [M, M, M],
+    cell_type=dolfinx.mesh.CellType.tetrahedron,
 )
 volume.name = "volume"
 
@@ -37,8 +38,7 @@ else:
     nodes = np.zeros((0, 3), dtype=np.float64)
     connectivity = np.zeros((0, 2), dtype=np.int64)
 c_el = ufl.Mesh(
-    basix.ufl.element("Lagrange", basix.CellType.interval,
-                      1, shape=(nodes.shape[1],))
+    basix.ufl.element("Lagrange", basix.CellType.interval, 1, shape=(nodes.shape[1],))
 )
 line_mesh = dolfinx.mesh.create_mesh(
     MPI.COMM_WORLD,
@@ -53,8 +53,9 @@ line_mesh = dolfinx.mesh.create_mesh(
 
 # We define the appropriate function spaces on each mesh
 
-V = dolfinx.fem.functionspace(volume, ("Lagrange", 2))
-Q = dolfinx.fem.functionspace(line_mesh, ("Lagrange", 2))
+degree = 1
+V = dolfinx.fem.functionspace(volume, ("Lagrange", degree))
+Q = dolfinx.fem.functionspace(line_mesh, ("Lagrange", degree))
 
 # We define a mixed function space, to automate block extraction of the system
 
@@ -93,13 +94,13 @@ avg_v = Average(v, restriction_test, Rs)
 # We define the various constants used in the variational formulation
 
 Alpha1 = dolfinx.fem.Constant(volume, 1.0)
-A = ufl.pi*R**2
+A = ufl.pi * R**2
 
 # and the variational form itself
 
 
 def u_line(x):
-    return ufl.sin(ufl.pi*x[2]) + 2
+    return ufl.sin(ufl.pi * x[2]) + 2
 
 
 _xi_cache: dict[dolfinx.mesh.Mesh, dolfinx.fem.Constant] = {}
@@ -118,37 +119,39 @@ def x(mesh: dolfinx.mesh.Mesh):
 P = 2 * ufl.pi * R
 
 a = Alpha1 * ufl.inner(ufl.grad(u), ufl.grad(v)) * dx_3D
-a += P*xi(line_mesh) * ufl.inner(avg_u - p, avg_v) * dx_1D
-a += A*ufl.inner(ufl.grad(p), ufl.grad(q)) * dx_1D
-a += P*xi(line_mesh) * ufl.inner(p-avg_u, q) * dx_1D
+a += P * xi(line_mesh) * ufl.inner(avg_u - p, avg_v) * dx_1D
+a += A * ufl.inner(ufl.grad(p), ufl.grad(q)) * dx_1D
+a += P * xi(line_mesh) * ufl.inner(p - avg_u, q) * dx_1D
 
-vol_rate = xi(volume)/(xi(volume)+1)
+vol_rate = xi(volume) / (xi(volume) + 1)
 
 u_inside = vol_rate * u_line(x(volume))
-r = ufl.sqrt(x(volume)[0]**2 + x(volume)[1]**2)
-u_outside = vol_rate * (1 - R*ufl.ln(r/R))*u_line(x(volume))
+r = ufl.sqrt(x(volume)[0] ** 2 + x(volume)[1] ** 2)
+u_outside = vol_rate * (1 - R * ufl.ln(r / R)) * u_line(x(volume))
 u_ex = ufl.conditional(r < R, u_inside, u_outside)
 
-p_ex = ufl.sin(ufl.pi*x(line_mesh)[2]) + 2
+p_ex = ufl.sin(ufl.pi * x(line_mesh)[2]) + 2
 
-f_vol_in = vol_rate * ufl.pi**2 * ufl.sin(ufl.pi*x(volume)[2])
-f_vol_out = vol_rate * (1 - R*ufl.ln(r/R)) * \
-    ufl.pi**2 * ufl.sin(ufl.pi*x(volume)[2])
+f_vol_in = vol_rate * ufl.pi**2 * ufl.sin(ufl.pi * x(volume)[2])
+f_vol_out = (
+    vol_rate * (1 - R * ufl.ln(r / R)) * ufl.pi**2 * ufl.sin(ufl.pi * x(volume)[2])
+)
 f_vol = ufl.conditional(r < R, f_vol_in, f_vol_out)
 # - ufl.div(ufl.grad(u_ex))
 
-line_rate = xi(line_mesh)/(xi(line_mesh)+1)
+line_rate = xi(line_mesh) / (xi(line_mesh) + 1)
 # f_line = - A*ufl.div(ufl.grad(p_ex)) + P * line_rate * p_ex
-f_line = A * ufl.sin(ufl.pi*x(line_mesh)[2]) * ufl.pi**2 + P * line_rate * p_ex
+f_line = A * ufl.sin(ufl.pi * x(line_mesh)[2]) * ufl.pi**2 + P * line_rate * p_ex
 
 L = f_vol * v * dx_3D
 L += f_line * q * dx_1D
 
 # Exerior boundary conditions
-volume.topology.create_connectivity(volume.topology.dim-1, volume.topology.dim)
+volume.topology.create_connectivity(volume.topology.dim - 1, volume.topology.dim)
 exterior_facets = dolfinx.mesh.exterior_facet_indices(volume.topology)
 exterior_dofs = dolfinx.fem.locate_dofs_topological(
-    V, volume.topology.dim-1, exterior_facets)
+    V, volume.topology.dim - 1, exterior_facets
+)
 bc_expr = dolfinx.fem.Expression(u_ex, V.element.interpolation_points)
 u_bc = dolfinx.fem.Function(V)
 u_bc.interpolate(bc_expr)
@@ -165,7 +168,11 @@ petsc_options = {
     "ksp_error_if_not_converged": True,
 }
 problem = LinearProblem(
-    a, L, u=[uh, ph], petsc_options_prefix="coupled_poisson", petsc_options=petsc_options,
+    a,
+    L,
+    u=[uh, ph],
+    petsc_options_prefix="coupled_poisson",
+    petsc_options=petsc_options,
     bcs=bcs,
 )
 uh, ph = problem.solve()
@@ -180,3 +187,77 @@ with dolfinx.io.VTXWriter(line_mesh.comm, "p_1D_solver.bp", [ph]) as vtx:
 
 with dolfinx.io.VTXWriter(volume.comm, "u_bc.bp", [u_bc]) as vtx:
     vtx.write(0.0)
+
+
+# Compute L2-errors for u and p
+
+
+def L2(f: ufl.core.expr.Expr, dx: ufl.Measure):
+    integral = ufl.inner(f, f) * dx
+    comm = dx.ufl_domain().ufl_cargo().comm
+    return np.sqrt(
+        comm.allreduce(
+            dolfinx.fem.assemble_scalar(dolfinx.fem.form(integral)), op=MPI.SUM
+        )
+    )
+
+
+def H1(f: ufl.core.expr.Expr, dx: ufl.Measure):
+    integral = ufl.inner(f, f) * dx + ufl.inner(ufl.grad(f), ufl.grad(f)) * dx
+    comm = dx.ufl_domain().ufl_cargo().comm
+    return np.sqrt(
+        comm.allreduce(
+            dolfinx.fem.assemble_scalar(dolfinx.fem.form(integral)), op=MPI.SUM
+        )
+    )
+
+
+L2_error_u = L2(uh - u_ex, dx_3D)
+L2_error_p = L2(ph - p_ex, dx_1D)
+H1_error_u = H1(uh - u_ex, dx_3D)
+H1_error_p = H1(ph - p_ex, dx_1D)
+
+h_vol = volume.comm.allreduce(
+    np.max(
+        volume.h(
+            volume.topology.dim,
+            np.arange(
+                volume.topology.index_map(volume.topology.dim).size_local,
+                dtype=np.int32,
+            ),
+        )
+    ),
+    op=MPI.MAX,
+)
+h_line = line_mesh.comm.allreduce(
+    np.max(
+        line_mesh.h(
+            line_mesh.topology.dim,
+            np.arange(
+                line_mesh.topology.index_map(line_mesh.topology.dim).size_local,
+                dtype=np.int32,
+            ),
+        )
+    ),
+    op=MPI.MAX,
+)
+if MPI.COMM_WORLD.rank == 0:
+    print(f"{degree=:d} {q_degree=:d}")
+    print(f"{h_vol=:.5e}, {h_line=:.5e}")
+    print(f"L2-error u: {L2_error_u:.6e}")
+    print(f"L2-error p: {L2_error_p:.6e}")
+    print(f"H1-error u: {H1_error_u:.6e}")
+    print(f"H1-error p: {H1_error_p:.6e}")
+
+file = Path("results.csv")
+row = f"{degree:d},{q_degree:d},{h_vol:.6e},{H1_error_u:.6e},{L2_error_u:.6e},{h_line:.6e},{H1_error_p:.6e},{L2_error_p:.6e}"
+if file.exists():
+    with file.open("a") as f:
+        print(row, file=f)
+else:
+    with file.open("w") as f:
+        print(
+            "degree,q_degree,h_vol,H1_error_u,L2_error_u,h_line,H1_error_p,L2_error_p",
+            file=f,
+        )
+        print(row, file=f)

@@ -11,9 +11,13 @@ __all__ = ["Quadrature", "compute_disk_quadrature"]
 @dataclass
 class Quadrature:
     name: str
+    """Name of the quadrature rule"""
     points: npt.NDArray[np.floating]
+    """Points in the rule (physical space)"""
     weights: npt.NDArray[np.floating]
+    """Weights of the quadrature points"""
     scales: npt.NDArray[np.floating]
+    """Scaling factors for the quadrature points"""
 
 
 def _A(k, n):

@@ -20,9 +20,9 @@ def assemble_vector(
     entity_maps: typing.Sequence[dolfinx.mesh.EntityMap] | None = None,
     b: PETSc.Vec | None = None,  # type: ignore[name-defined]
 ) -> PETSc.Vec:  # type: ignore[name-defined]
-    """Assemble a {py:class}`ufl.Form` into a {py:class}`petsc4py.PETSc.Vec`.
+    """Assemble a :py:class:`ufl.Form` into a :py:class:`petsc4py.PETSc.Vec`.
 
-    The form might contain {py:class}`fenicsx_ii.Average` operators, in which case
+    The form might contain :py:class:`fenicsx_ii.Average` operators, in which case
     the appropriate restriction operators are applied to the test and trial functions
     before creating the vector. The form might also be a block form, in which case
     a nested vector is created.
@@ -81,8 +81,10 @@ def assemble_vector(
                     if bc.function_space == space:
                         dolfinx.fem.petsc.set_bc(_vecs[i], [bc])
                 _vecs[i].ghostUpdate(
-                    addv=PETSc.InsertMode.INSERT_VALUES,  # type: ignore[attr-defined]
-                    mode=PETSc.ScatterMode.FORWARD,  # type: ignore[attr-defined]
+                    # type: ignore[attr-defined]
+                    addv=PETSc.InsertMode.INSERT_VALUES,
+                    # type: ignore[attr-defined]
+                    mode=PETSc.ScatterMode.FORWARD,
                 )  # type: ignore
         [vec.destroy() for vec in _vecs]
         return b
@@ -95,7 +97,8 @@ def assemble_vector_and_apply_restriction(
     jit_options: dict | None = None,
     entity_maps: typing.Sequence[dolfinx.mesh.EntityMap] | None = None,
 ) -> PETSc.Vec:  # type: ignore[name-defined]
-    def assemble_restricted_vector(form: ufl.Form) -> PETSc.Vec:  # type: ignore[name-defined]
+    # type: ignore[name-defined]
+    def assemble_restricted_vector(form: ufl.Form) -> PETSc.Vec:
         L_c = dolfinx.fem.form(
             form,
             form_compiler_options=form_compiler_options,
@@ -120,13 +123,15 @@ def assemble_vector_and_apply_restriction(
 
 def apply_vector_replacer(
     form: ufl.Form,
-    get_vector: typing.Callable[[ufl.Form], PETSc.Vec],  # type: ignore[name-defined]
-    post_assembly: typing.Callable[[PETSc.Vec], None],  # type: ignore[name-defined]
+    # type: ignore[name-defined]
+    get_vector: typing.Callable[[ufl.Form], PETSc.Vec],
+    # type: ignore[name-defined]
+    post_assembly: typing.Callable[[PETSc.Vec], None],
     vec: PETSc.Vec | None = None,  # type: ignore[name-defined]
 ) -> PETSc.Vec:  # type: ignore[name-defined]
     """Given a linear form, replace all averaged coefficients and arguments
-    by the corresponding {py:class}`fenicsx_ii.AveragedCoefficient` and
-    {py:class}`fenicsx_ii.AveragedArgument` and assemble the resulting
+    by the corresponding :py:class:`fenicsx_ii.AveragedCoefficient` and
+    :py:class:`fenicsx_ii.AveragedArgument` and assemble the resulting
     form into a vector.
 
     Args:
@@ -222,9 +227,9 @@ def create_vector(
     jit_options: dict | None = None,
     entity_maps: typing.Sequence[dolfinx.mesh.EntityMap] | None = None,
 ) -> PETSc.Vec:  # type: ignore[name-defined]
-    """Create a {py:class}`petsc4py.PETSc.Vec` from a {py:class}`ufl.Form`.
+    """Create a :py:class:`petsc4py.PETSc.Vec` from a :py:class:`ufl.Form`.
 
-    The form might contain {py:class}`fenicsx_ii.Average` operators, in which case
+    The form might contain :py:class:`fenicsx_ii.Average` operators, in which case
     the appropriate restriction operators are applied to the test functions before
     creating the vector. The form might also be a block form, in which case
     a nested vector is created.
