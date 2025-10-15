@@ -20,18 +20,40 @@ class ReductionOperator(typing.Protocol):
 
     def compute_quadrature(
         self, cells: npt.NDArray[np.int32], reference_points: npt.NDArray[np.floating]
-    ) -> Quadrature: ...
+    ) -> Quadrature:
+        """
+        Function that should compute the :py:class:`Quadrature<fenicsx_ii.Quadrature>`
+        on the given cells and reference points.
+
+        Args:
+            cells: List of cell indices on which to compute
+                the quadrature (local to process).
+            reference_points: List of reference points in the cells,
+                shape ``(num_points, tdim)``.
+
+        Returns:
+            The quadrature rule on the given cells and reference points.
+        """
+        ...
 
     @property
-    def num_points(self) -> int: ...
+    def num_points(self) -> int:
+        """Number of quadrature points per cell."""
+        ...
+
+    def __str__(self) -> str:
+        """String representation of the operator."""
+        ...
 
 
 class PointwiseTrace:
-    def __init__(self, mesh: dolfinx.mesh.Mesh):
-        """Naive trace on a 1D line segment.
+    """Trace of the 3D function on the line segment.
 
-        Just evaluates input points in physical space.
-        """
+    Args:
+        mesh: The 1D mesh on which the trace is taken.
+    """
+
+    def __init__(self, mesh: dolfinx.mesh.Mesh):
         self._mesh = mesh
 
     def compute_quadrature(
@@ -48,8 +70,23 @@ class PointwiseTrace:
     def num_points(self) -> int:
         return 1
 
+    def __str__(self) -> str:
+        return f"PointwiseTrace({self._mesh})"
+
 
 class Circle:
+    """
+    The average on the perimiter of a circle with a given `radius`.
+
+    Args:
+        mesh: The 1D mesh on which the circles are centered.
+        radius: The radius of the circles. Either a float or a function that
+            takes in a list of points (shape (3, num_points)) and returns a list
+            of radii (shape (num_points,)).
+        degree: The degree of the quadrature rule on the circle.
+            Must be at least 3 for a sensible approximation.
+    """
+
     def __init__(
         self,
         mesh: dolfinx.mesh.Mesh,
@@ -85,6 +122,12 @@ class Circle:
                 np.zeros_like(xp.T[0]),
             ]
         ).T
+
+    def __str__(self) -> str:
+        return (
+            f"Circle({self._mesh}, radius={self._radius}"
+            + f", num_points={self._w.shape[0]})"
+        )
 
     @property
     def num_points(self):
@@ -160,6 +203,19 @@ class Circle:
 
 
 class Disk:
+    """
+    The average on a disk with a given `radius`.
+    The quadrature rule is based on Bojanov and Petrova (1998),
+    https://doi.org/10.1007/s002110050358.
+
+    Args:
+        mesh: The 1D mesh on which the disks are centered.
+        radius: The radius of the disks. Either a float or a function that
+            takes in a list of points (shape (3, num_points)) and returns a list
+            of radii (shape (num_points,)).
+        degree: The degree of the quadrature rule on the disk.
+    """
+
     def __init__(
         self,
         mesh: dolfinx.mesh.Mesh,

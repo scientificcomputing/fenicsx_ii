@@ -1,0 +1,69 @@
+# Book settings
+# Learn more at https://jupyterbook.org/customize/config.html
+
+title: scifem
+author: Jørgen S. Dokken
+copyright: "2025"
+only_build_toc_files: true
+
+
+execute:
+  execute_notebooks: cache
+  timeout: 3000
+
+# Information about where the book exists on the web
+repository:
+  url: https://github.com/scientificcomputing/fenicsx_ii # Online location of your book
+  branch: main
+
+
+html:
+  use_issues_button: true
+  use_repository_button: true
+  extra_footer: |
+    <div>
+        This software package has been developed by Jørgen S. Dokken while employed at Simula Research Laboratory.
+        It is licensed under the MIT License. The work has been funded by the Wellcome Trust, grant number 313298/Z/24/Z.
+    </div>
+
+parse:
+  myst_enable_extensions:
+    - amsmath
+    - dollarmath
+    - linkify
+    - html_admonition
+
+sphinx:
+  extra_extensions:
+  - 'sphinx.ext.autodoc'
+  - 'sphinx.ext.napoleon'
+  - 'sphinx.ext.viewcode'
+  - 'sphinxcontrib.bibtex'
+  - 'sphinx.ext.intersphinx'
+  - "sphinx_codeautolink"
+
+  config:
+    html_last_updated_fmt: "%b %d, %Y"
+    nb_execution_show_tb: True
+    bibtex_bibfiles: ["references.bib"]
+    suppress_warnings: ["mystnb.unknown_mime_type"]
+    nb_custom_formats:  # https://jupyterbook.org/en/stable/file-types/jupytext.html#file-types-custom
+        .py:
+            - jupytext.reads
+            - fmt: py
+    codeautolink_concat_default: True
+    intersphinx_mapping:
+      basix : ["https://docs.fenicsproject.org/basix/main/python/", null]
+      ffcx : ["https://docs.fenicsproject.org/ffcx/main/", null]
+      ufl : ["https://docs.fenicsproject.org/ufl/main/", null]
+      dolfinx : ["https://docs.fenicsproject.org/dolfinx/main/python", null]
+      petsc4py: ["https://petsc.org/release/petsc4py", null]
+      mpi4py: ["https://mpi4py.readthedocs.io/en/stable", null]
+      numpy: ["https://numpy.org/doc/stable/", null]
+      pyvista: ["https://docs.pyvista.org/", null]
+      packaging: ["https://packaging.pypa.io/en/stable/", null]
+      scifem: ["https://scientificcomputing.github.io/scifem/", null]
+
+
+
+exclude_patterns: [".pytest_cache/*" ,"tests", venv, .vcode, .ruff_cache, .github, .git]
