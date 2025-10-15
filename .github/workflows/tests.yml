@@ -4,7 +4,7 @@ on:
   pull_request:
   push:
     branches: [main]
-
+  workflow_call:
 jobs:
   test-code:
     name: Test on ${{ matrix.container }}
@@ -16,10 +16,9 @@ jobs:
       fail-fast: false
       matrix:
         container: [
-          # "ghcr.io/fenics/dolfinx/dolfinx:stable",
-          "ghcr.io/fenics/dolfinx/dolfinx:nightly"
-        ]
-
+            # "ghcr.io/fenics/dolfinx/dolfinx:stable",
+            "ghcr.io/fenics/dolfinx/dolfinx:nightly",
+          ]
 
     steps:
       - uses: actions/checkout@v5
