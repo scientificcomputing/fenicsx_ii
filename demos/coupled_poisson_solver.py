@@ -4,9 +4,10 @@
 # from {cite}`3D1Dmasri-masri2024coupled3d1d`.
 # We consider a 3D domain $\Omega$ with a 1D inclusion $\Lambda$.
 # We assume that $\Lambda$ can be parameterised as a curve $\lambda(s)$, $s\in(0,L)$.
-# Next, we define a generalized cylinder $B_{\Lambda,R(s)}$ with centerline $\Lambda$ and radius $R$.
-# A cross section of the cylinder at $s$ is defined as the circle $\Theta_{R}(s)$ with radius
-# $R: [0, L] \to \mathbb{R}^+$, area $A(s)$ and perimeter $P(s)$.
+# Next, we define a generalized cylinder $B_{\Lambda,R(s)}$ with centerline $\Lambda$
+# and radius $R$.
+# A cross section of the cylinder at $s$ is defined as the circle $\Theta_{R}(s)$
+# with radius $R: [0, L] \to \mathbb{R}^+$, area $A(s)$ and perimeter $P(s)$.
 # The boundary of $B_\Lambda$ is denoted $\Gamma$.
 # For a function $u\in V(\Omega)$, we define the restriction operator
 # $\Pi_R(s): V(\Omega) \to L^2(\Lambda)$ as
@@ -31,6 +32,8 @@ import basix.ufl
 import dolfinx
 import numpy as np
 import ufl
+
+from fenicsx_ii import Average, Circle, LinearProblem, assemble_scalar
 
 M = 32  # Number of elements in each spatial direction in the box
 N = M  # Number of elements in the line
@@ -90,7 +93,8 @@ lmbda = dolfinx.mesh.create_mesh(
 #
 # $$
 # \begin{align}
-#   - \nabla \cdot (\alpha_1 \nabla u) + \xi (\Pi_R(u) - p))\delta_\Gamma &= f && \text{in } \Omega, \\
+#   - \nabla \cdot (\alpha_1 \nabla u) + \xi (\Pi_R(u) - p))\delta_\Gamma &= f
+#   && \text{in } \Omega, \\
 #   - d_s(A d_s p) + P \xi (p - \Pi(u)) &= A \hat f  &&  \text{in } \Lambda, \\
 #   u&=g &&\text{on } \partial\Omega,\\
 #   A d_s p &=0 && \text{at } s\in\{0, 1\}.
@@ -109,13 +113,8 @@ lmbda = dolfinx.mesh.create_mesh(
 #   &= \int_\Gamma A\hat f\cdot q~\mathrm{d}s
 # \end{align*}
 # $$
-
-# We start by import the necessary modules from
-# {py:mod}`fenicsx_ii`.
-
-from fenicsx_ii import Average, Circle, LinearProblem, assemble_scalar
-
-# Next, define the appropriate function spaces on each mesh
+#
+# We define the appropriate function spaces on each mesh
 
 degree = 1
 V = dolfinx.fem.functionspace(omega, ("Lagrange", degree))
@@ -130,11 +129,15 @@ W = ufl.MixedFunctionSpace(*[V, Q])
 
 # We start by defining the restriction operator, which we use to represent $\Pi_R(u)$ as
 # {py:class}`Circle<fenicsx_ii.Circle>` is used to define the restriction operator
-# defined above, where we specify the radius of the vessel (can be a spatially dependent function).
-# In addition, we need to specify the quadrature degree used for numerical integration over $\partial\Theta_R(s)$.
-# In this example, the restriction for the trial and test functions are the same, but this can vary based on the
-# discretization, see for instance {cite}`3D1Dmasri-dangelo20083d1d` for an example where `restriction_test`
-# is {py:class}`PointwiseTrace<fenicsx_ii.PointwiseTrace>` rather than {py:class}`Circle<fenicsx_ii.Circle>`.
+# defined above, where we specify the radius of the vessel
+# (can be a spatiallydependent function).
+# In addition, we need to specify the quadrature degree used for numerical
+# integration over $\partial\Theta_R(s)$.
+# In this example, the restriction for the trial and test functions are the same,
+# but this can vary based on the discretization, see for instance
+# {cite}`3D1Dmasri-dangelo20083d1d` for an example where `restriction_test`
+# is {py:class}`PointwiseTrace<fenicsx_ii.PointwiseTrace>` rather than
+# a {py:class}`Circle<fenicsx_ii.Circle>`.
 
 R = 0.05
 q_degree = 20
@@ -148,16 +151,19 @@ dx_1D = ufl.Measure("dx", domain=lmbda)
 
 # To represent the variational formulations in {py:mod}`Unified Form Language<ufl>`,
 # we will use an intermediate space to represent the averages as a
-# {py:func}`test function<ufl.TestFunction>`, {py:func}`trial function<ufl.TrialFunction>`.
+# {py:func}`test function<ufl.TestFunction>`,
+# {py:func}`trial function<ufl.TrialFunction>`
 # or {py:class}`function<dolfinx.fem.Function>` on $\Lambda$.
 
-# In this demo, we choose to use a {py:func}`quadrature element<basix.ufl.quadrature_element>`,
+# In this demo, we choose to use a
+# {py:func}`quadrature element<basix.ufl.quadrature_element>`,
 # as we can the easily control the accuracy of the representation on $\Gamma$.
 
 q_el = basix.ufl.quadrature_element(lmbda.basix_cell(), value_shape=(), degree=q_degree)
 Rs = dolfinx.fem.functionspace(lmbda, q_el)
 
-# We are now ready to define the averaging operator $\Pi_R(\Gamma)$ for the test and trial functions.
+# We are now ready to define the averaging operator $\Pi_R(\Gamma)$ for the test
+# and trial functions.
 
 avg_u = Average(u, restriction_trial, Rs)
 avg_v = Average(v, restriction_test, Rs)
@@ -199,7 +205,8 @@ a += P * xi * ufl.inner(p - avg_u, q) * dx_1D
 # \begin{align*}
 #   u_{ex} &=
 #   \begin{cases}
-#     \frac{\xi}{\xi + 1} \left(1 - R\log\left(\frac{r}{R}\right)\right)p_{ex}, & r > R, \\
+#     \frac{\xi}{\xi + 1} \left(1 - R\log\left(\frac{r}{R}\right)\right)p_{ex}
+#     , & r > R, \\
 #     \frac{\xi}{\xi + 1} p_{ex}, & r \leq R,
 #   \end{cases} \\
 #  p_{ex} &= \sin(\pi z) + 2 \\
@@ -217,7 +224,8 @@ a += P * xi * ufl.inner(p - avg_u, q) * dx_1D
 # and therefore
 #
 # $$
-# (p_{ex}- \Pi_R(u_{ex}) = \left(1-\frac{\xi}{\xi+1}\right)p_{ex} = \frac{1}{\xi+1}p_{ex}
+# (p_{ex}- \Pi_R(u_{ex}) = \left(1-\frac{\xi}{\xi+1}\right)p_{ex}
+# = \frac{1}{\xi+1}p_{ex}
 # $$
 #
 # and we can compute
@@ -251,9 +259,10 @@ L = f_vol * v * dx_3D
 L += A_fhat * q * dx_1D
 # -
 
-# Next, we set up the strong {py:class}`Dirichlet boundary conditions<dolfinx.fem.DirichletBC>` using
-# the manufactured solution. We interpolate it into the appropriate function space by wrapping it as a
-# {py:class}`Expression<dolfinx.fem.Expression>`.
+# Next, we set up the strong
+# {py:class}`Dirichlet boundary conditions<dolfinx.fem.DirichletBC>` using
+# the manufactured solution. We interpolate it into the appropriate function
+# space by wrapping it as a {py:class}`Expression<dolfinx.fem.Expression>`.
 
 omega.topology.create_connectivity(omega.topology.dim - 1, omega.topology.dim)
 exterior_facets = dolfinx.mesh.exterior_facet_indices(omega.topology)
@@ -268,9 +277,12 @@ bcs = [bc]
 
 # ## Solving the linear system
 
-# Next, we solve the arising linear system with the {py:class}`LinearProblem<fenicsx_ii.LinearProblem>` class.
-# Note that you have to use the {mod}`fenicsx_ii-class<fenicsx_ii.LinearProblem>` rather than
-# the standard {py:class}`LinearProblem<dolfinx.fem.petsc.LinearProblem>` from {py:mod}`dolfinx.fem.petsc`
+# Next, we solve the arising linear system with the
+# {py:class}`LinearProblem<fenicsx_ii.LinearProblem>` class.
+# Note that you have to use the {mod}`fenicsx_ii-class<fenicsx_ii.LinearProblem>`
+# rather than the standard {py:class}`LinearProblem<dolfinx.fem.petsc.LinearProblem>`
+# from {py:mod}`dolfinx.fem.petsc`
+
 petsc_options = {
     "ksp_type": "preonly",
     "pc_type": "lu",
