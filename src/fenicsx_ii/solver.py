@@ -25,6 +25,8 @@ class LinearProblem:
         ``.destroy()`` on returned PETSc objects.
     """
 
+    _u: dolfinx.fem.Function | Sequence[dolfinx.fem.Function]
+
     def __init__(
         self,
         a: ufl.Form,
@@ -131,19 +133,18 @@ class LinearProblem:
             jit_options=jit_options,
             entity_maps=entity_maps,
         )
-        self._u: dolfinx.fem.Function | Sequence[dolfinx.fem.Function]
         if u is None:
             # Extract function space for unknown from the right hand
             # side of the equation.
-            if len(self._L.arguments()) > 1:
+            arguments = [arg for arg in self._L.arguments()]
+            if len(arguments) > 1:
+                blocked_linear_form = ufl.extract_blocks(L)
                 self._u = [
-                    dolfinx.fem.Function(vi.ufl_function_space())
-                    for vi in self._L.arguments()
+                    dolfinx.fem.Function(form.arguments()[0].ufl_function_space())
+                    for form in blocked_linear_form
                 ]
             else:
-                self._u = dolfinx.fem.Function(
-                    self._L.arguments()[0].ufl_function_space()
-                )
+                self._u = dolfinx.fem.Function(arguments[0].ufl_function_space())
         else:
             self._u = u
 
@@ -254,7 +255,8 @@ class LinearProblem:
             PETSc.InsertMode.INSERT,  # type: ignore[attr-defined]
             PETSc.ScatterMode.FORWARD,  # type: ignore[attr-defined]
         )
-        dolfinx.fem.petsc.assign(self.x, self.u)
+
+        dolfinx.fem.petsc.assign(self.x, self._u)
         return self.u
 
     @property

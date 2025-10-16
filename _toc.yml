@@ -12,3 +12,4 @@ parts:
   - caption: Reference
     chapters:
       - file: "docs/api.rst"
+      - file: "docs/ufl_modifications.rst"

@@ -1,4 +1,4 @@
-from .assembly import assemble_scalar
+from .assembly import assemble_scalar, average_coefficients
 from .interpolation import create_interpolation_matrix
 from .matrix_assembler import assemble_matrix, create_matrix
 from .quadrature import Quadrature
@@ -11,6 +11,7 @@ __all__ = [
     "Circle",
     "Disk",
     "PointwiseTrace",
+    "average_coefficients",
     "create_interpolation_matrix",
     "Average",
     "LinearProblem",

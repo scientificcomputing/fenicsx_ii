@@ -45,6 +45,14 @@ def assign_LG_map(
 
 
 def average_coefficients(form: ufl.Form):
+    """Perform the average operation on all coefficients of a given form.
+
+    Note:
+        This updates the underlying vector of each coefficient.
+
+    Args:
+        form: The form whose coefficients are averaged.
+    """
     for coeff in form.coefficients():
         if isinstance(coeff, AveragedCoefficient):
             u = coeff.parent_coefficient
@@ -67,6 +75,19 @@ def assemble_scalar(
     entity_maps: typing.Sequence[dolfinx.mesh.EntityMap] | None = None,
     op: MPI.Op = MPI.SUM,
 ) -> np.inexact | float | complex:
+    """
+    Assemble a rank-0 form into a scalar value. Perform necessary MPI communication.
+
+    Args:
+        form: The rank-0 form to assemble.
+        form_compiler_options: Options for the form compiler.
+        jit_options: Options for just-in-time compilation.
+        entity_maps: Entity maps for the mesh.
+        op: The MPI operation to use for communication (default is
+            :py:obj:`mpi4py.MPI.SUM`).
+    Returns
+        The assembled scalar value.
+    """
     new_forms = apply_replacer(form)
     loc_val: float | complex = 0.0
     for avg_form in new_forms:

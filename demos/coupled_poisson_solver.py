@@ -26,13 +26,14 @@
 
 # +
 from mpi4py import MPI
+
+import basix.ufl
 import dolfinx
 import numpy as np
-import basix.ufl
 import ufl
 
-M = 32 # Number of elements in each spatial direction in the box
-N = M # Number of elements in the line
+M = 32  # Number of elements in each spatial direction in the box
+N = M  # Number of elements in the line
 comm = MPI.COMM_WORLD
 omega = dolfinx.mesh.create_box(
     comm,
@@ -40,7 +41,6 @@ omega = dolfinx.mesh.create_box(
     [M, M, M],
     cell_type=dolfinx.mesh.CellType.tetrahedron,
 )
-omega.name = "volume"
 # -
 
 # Next we create a line that spans $[0,0,-0.5]\times[0,0,0.5]$.
@@ -90,7 +90,7 @@ lmbda = dolfinx.mesh.create_mesh(
 #
 # $$
 # \begin{align}
-#   - \nabla \cdot (\nabla u) + \xi (\Pi_R(u) - p))\delta_\Gamma &= f && \text{in } \Omega, \\
+#   - \nabla \cdot (\alpha_1 \nabla u) + \xi (\Pi_R(u) - p))\delta_\Gamma &= f && \text{in } \Omega, \\
 #   - d_s(A d_s p) + P \xi (p - \Pi(u)) &= A \hat f  &&  \text{in } \Lambda, \\
 #   u&=g &&\text{on } \partial\Omega,\\
 #   A d_s p &=0 && \text{at } s\in\{0, 1\}.
@@ -101,7 +101,7 @@ lmbda = dolfinx.mesh.create_mesh(
 #
 # $$
 # \begin{align*}
-#   \int_\Omega \nabla u \cdot \nabla v~\mathrm{d}x
+#   \int_\Omega \alpha_1 \nabla u \cdot \nabla v~\mathrm{d}x
 #   + \int_\Gamma P\xi (\Pi_R(u) - p)\Pi_R(v)~\mathrm{d}s
 #   &= \int_\Omega f\cdot v~\mathrm{d}x\\
 #   \int_\Gamma d_s p \cdot d_s q~\mathrm{d}s
@@ -110,25 +110,31 @@ lmbda = dolfinx.mesh.create_mesh(
 # \end{align*}
 # $$
 
-from fenicsx_ii import Average, Circle, LinearProblem
+# We start by import the necessary modules from
+# {py:mod}`fenicsx_ii`.
 
+from fenicsx_ii import Average, Circle, LinearProblem, assemble_scalar
 
-
-# We define the appropriate function spaces on each mesh
+# Next, define the appropriate function spaces on each mesh
 
 degree = 1
 V = dolfinx.fem.functionspace(omega, ("Lagrange", degree))
 Q = dolfinx.fem.functionspace(lmbda, ("Lagrange", degree))
 
-# We define a mixed function space, to automate block extraction of the system
+# We define a {py:class}`mixed function space<ufl.MixedFunctionSpace>`,
+# to automate {py:func}`block extraction<ufl.extract_blocks>` of the system
 
 W = ufl.MixedFunctionSpace(*[V, Q])
 (u, p) = ufl.TrialFunctions(W)
 (v, q) = ufl.TestFunctions(W)
 
-# We define the intermediate space used for the restriction operator, along with
-# the operators themselves. Note that the test and trial function are restricted
-# in different ways.
+# We start by defining the restriction operator, which we use to represent $\Pi_R(u)$ as
+# {py:class}`Circle<fenicsx_ii.Circle>` is used to define the restriction operator
+# defined above, where we specify the radius of the vessel (can be a spatially dependent function).
+# In addition, we need to specify the quadrature degree used for numerical integration over $\partial\Theta_R(s)$.
+# In this example, the restriction for the trial and test functions are the same, but this can vary based on the
+# discretization, see for instance {cite}`3D1Dmasri-dangelo20083d1d` for an example where `restriction_test`
+# is {py:class}`PointwiseTrace<fenicsx_ii.PointwiseTrace>` rather than {py:class}`Circle<fenicsx_ii.Circle>`.
 
 R = 0.05
 q_degree = 20
@@ -140,76 +146,115 @@ restriction_test = Circle(lmbda, R, degree=q_degree)
 dx_3D = ufl.Measure("dx", domain=omega)
 dx_1D = ufl.Measure("dx", domain=lmbda)
 
-# We can define the intermediate space that we interpolate the
-# 3D arguments into
+# To represent the variational formulations in {py:mod}`Unified Form Language<ufl>`,
+# we will use an intermediate space to represent the averages as a
+# {py:func}`test function<ufl.TestFunction>`, {py:func}`trial function<ufl.TrialFunction>`.
+# or {py:class}`function<dolfinx.fem.Function>` on $\Lambda$.
 
-q_el = basix.ufl.quadrature_element(
-    lmbda.basix_cell(), value_shape=(), degree=q_degree
-)
+# In this demo, we choose to use a {py:func}`quadrature element<basix.ufl.quadrature_element>`,
+# as we can the easily control the accuracy of the representation on $\Gamma$.
+
+q_el = basix.ufl.quadrature_element(lmbda.basix_cell(), value_shape=(), degree=q_degree)
 Rs = dolfinx.fem.functionspace(lmbda, q_el)
 
+# We are now ready to define the averaging operator $\Pi_R(\Gamma)$ for the test and trial functions.
 
-# Next, we define the averaging operator of each of the test and trial functions
-# of the 3D spaces
 avg_u = Average(u, restriction_trial, Rs)
 avg_v = Average(v, restriction_test, Rs)
 
-# We define the various constants used in the variational formulation
+# We define the physical parameters, the area and perimeter of $\Gamma$
 
-Alpha1 = dolfinx.fem.Constant(omega, 1.0)
+alpha1 = dolfinx.fem.Constant(omega, 1.0)
 A = ufl.pi * R**2
-
-# and the variational form itself
-
-
-def u_line(x):
-    return ufl.sin(ufl.pi * x[2]) + 2
-
-
-_xi_cache: dict[dolfinx.mesh.Mesh, dolfinx.fem.Constant] = {}
-
-
-def xi(domain):
-    if _xi_cache.get(domain, None) is None:
-        _xi_cache[domain] = dolfinx.fem.Constant(domain, 1.0)
-    return _xi_cache[domain]
-
-
-def x(mesh: dolfinx.mesh.Mesh):
-    return ufl.SpatialCoordinate(mesh)
-
-
 P = 2 * ufl.pi * R
 
-a = Alpha1 * ufl.inner(ufl.grad(u), ufl.grad(v)) * dx_3D
-a += P * xi(lmbda) * ufl.inner(avg_u - p, avg_v) * dx_1D
+# ```{admonition} Spatially dependent quantities and constants
+# We will define `xi` and the {py:class}`spatial coordinates<ufl.SpatialCoordinate>`
+# with respect to the 3D mesh.
+# However, we will use them in forms which uses `dx_1D` as an
+# {py:class}`integration measure<ufl.Measure>`.
+# This is usually not supported in UFL. However, internally in FEniCSx_ii, we implement
+# a {py:class}`DAGTraverser<fenicsx_ii.ufl_operations.DomainReplacer>` that replaces
+# these domains with the appropriate one, defined in the initialization of the
+# {py:class}`integration measure<ufl.Measure>`.
+# ````
+
+xi = dolfinx.fem.Constant(omega, 1.0)
+x = ufl.SpatialCoordinate(omega)
+
+
+# ### Defining the bilinear form
+# We can define the bilinear form `a` with standard {py:class}`UFL<ufl>` operations.
+
+a = alpha1 * ufl.inner(ufl.grad(u), ufl.grad(v)) * dx_3D
+a += P * xi * ufl.inner(avg_u - p, avg_v) * dx_1D
 a += A * ufl.inner(ufl.grad(p), ufl.grad(q)) * dx_1D
-a += P * xi(lmbda) * ufl.inner(p - avg_u, q) * dx_1D
+a += P * xi * ufl.inner(p - avg_u, q) * dx_1D
 
-vol_rate = xi(omega) / (xi(omega) + 1)
+# ### Defining the linear form
+# We will use a manufactured solution to define the right-hand side.
+# We recall the solution from {cite}`3D1Dmasri-masri2024coupled3d1d`:
+#
+# $$
+# \begin{align*}
+#   u_{ex} &=
+#   \begin{cases}
+#     \frac{\xi}{\xi + 1} \left(1 - R\log\left(\frac{r}{R}\right)\right)p_{ex}, & r > R, \\
+#     \frac{\xi}{\xi + 1} p_{ex}, & r \leq R,
+#   \end{cases} \\
+#  p_{ex} &= \sin(\pi z) + 2 \\
+# \end{align*}
+# $$
+#
+# We use {py:mod}`UFL<ufl>` operations to define the manufactured solution
+# and the right-hand side.
+# Note that since $p_ex$ doesn't vary in the radial direction, the average is:
+#
+# $$
+# \Pi_R(u_{ex}) = \frac{\xi}{\xi+1}p_{ex}
+# $$
+#
+# and therefore
+#
+# $$
+# (p_{ex}- \Pi_R(u_{ex}) = \left(1-\frac{\xi}{\xi+1}\right)p_{ex} = \frac{1}{\xi+1}p_{ex}
+# $$
+#
+# and we can compute
+#
+# $$
+# f=-\nabla \cdot (\alpha_1 \nabla u_{ex})
+# $$
+#
+# and
+#
+# $$
+# \begin{align*}
+#   A\hat{f} &= -d_s(A d_s p_{ex}) + P\xi(p_{ex} - \Pi_R(u_{ex}))\\
+#   &=-d_s (A d_s p_{ex}) + \frac{P\xi}{\xi+1}p_{ex}.
+# \end{align*}
+# $$
 
-u_inside = vol_rate * u_line(x(omega))
-r = ufl.sqrt(x(omega)[0] ** 2 + x(omega)[1] ** 2)
-u_outside = vol_rate * (1 - R * ufl.ln(r / R)) * u_line(x(omega))
+# +
+p_ex = ufl.sin(ufl.pi * x[2]) + 2
+xi_rate = xi / (xi + 1)
+
+u_inside = xi_rate * p_ex
+r = ufl.sqrt(x[0] ** 2 + x[1] ** 2)
+u_outside = xi_rate * (1 - R * ufl.ln(r / R)) * p_ex
 u_ex = ufl.conditional(r < R, u_inside, u_outside)
 
-p_ex = ufl.sin(ufl.pi * x(lmbda)[2]) + 2
-
-f_vol_in = vol_rate * ufl.pi**2 * ufl.sin(ufl.pi * x(omega)[2])
-f_vol_out = (
-    vol_rate * (1 - R * ufl.ln(r / R)) * ufl.pi**2 * ufl.sin(ufl.pi * x(omega)[2])
-)
-f_vol = ufl.conditional(r < R, f_vol_in, f_vol_out)
-# - ufl.div(ufl.grad(u_ex))
-
-line_rate = xi(lmbda) / (xi(lmbda) + 1)
-# f_line = - A*ufl.div(ufl.grad(p_ex)) + P * line_rate * p_ex
-f_line = A * ufl.sin(ufl.pi * x(lmbda)[2]) * ufl.pi**2 + P * line_rate * p_ex
+f_vol = -ufl.div(alpha1 * ufl.grad(u_ex))
+A_fhat = -ufl.div(A * ufl.grad(p_ex)) + P * xi_rate * p_ex
 
 L = f_vol * v * dx_3D
-L += f_line * q * dx_1D
+L += A_fhat * q * dx_1D
+# -
 
-# Exerior boundary conditions
+# Next, we set up the strong {py:class}`Dirichlet boundary conditions<dolfinx.fem.DirichletBC>` using
+# the manufactured solution. We interpolate it into the appropriate function space by wrapping it as a
+# {py:class}`Expression<dolfinx.fem.Expression>`.
+
 omega.topology.create_connectivity(omega.topology.dim - 1, omega.topology.dim)
 exterior_facets = dolfinx.mesh.exterior_facet_indices(omega.topology)
 exterior_dofs = dolfinx.fem.locate_dofs_topological(
@@ -221,9 +266,11 @@ u_bc.interpolate(bc_expr)
 bc = dolfinx.fem.dirichletbc(u_bc, exterior_dofs)
 bcs = [bc]
 
-# We assemble the arising linear system
-uh = dolfinx.fem.Function(V, name="u_3D")
-ph = dolfinx.fem.Function(Q, name="p_1D")
+# ## Solving the linear system
+
+# Next, we solve the arising linear system with the {py:class}`LinearProblem<fenicsx_ii.LinearProblem>` class.
+# Note that you have to use the {mod}`fenicsx_ii-class<fenicsx_ii.LinearProblem>` rather than
+# the standard {py:class}`LinearProblem<dolfinx.fem.petsc.LinearProblem>` from {py:mod}`dolfinx.fem.petsc`
 petsc_options = {
     "ksp_type": "preonly",
     "pc_type": "lu",
@@ -233,87 +280,57 @@ petsc_options = {
 problem = LinearProblem(
     a,
     L,
-    u=[uh, ph],
     petsc_options_prefix="coupled_poisson",
     petsc_options=petsc_options,
     bcs=bcs,
 )
 uh, ph = problem.solve()
+uh.name = "uh"
+ph.name = "ph"
 
-# We move the solution to a Function and save to file
-
+# We store the solutions to file using the {py:class}`VTXWriter<dolfinx.io.VTXWriter>`.
 
 with dolfinx.io.VTXWriter(omega.comm, "u_3D_solver.bp", [uh]) as vtx:
     vtx.write(0.0)
 with dolfinx.io.VTXWriter(lmbda.comm, "p_1D_solver.bp", [ph]) as vtx:
     vtx.write(0.0)
 
-with dolfinx.io.VTXWriter(omega.comm, "u_bc.bp", [u_bc]) as vtx:
-    vtx.write(0.0)
+# ## Error-computations
+# We compute the error in the $L^2$ and $H^1$ norms for both variables.
+# Note that we employ a custom implementation of {py:func}`dolfinx.fem.assemble_scalar`,
+# namely {py:func}`fenicsx_ii.assemble_scalar`, which supports restricted coefficients,
+# {py:class}`dolfinx.fem.Constant<dolfinx.fem.Constant>` defined on different domains.
+# It additionally takes care of the necessary communication for parallel computations.
 
 
-# Compute L2-errors for u and p
-
-
-def L2(f: ufl.core.expr.Expr, dx: ufl.Measure):
+# +
+def L2(f: ufl.core.expr.Expr, dx: ufl.Measure) -> float:
     integral = ufl.inner(f, f) * dx
-    comm = dx.ufl_domain().ufl_cargo().comm
-    return np.sqrt(
-        comm.allreduce(
-            dolfinx.fem.assemble_scalar(dolfinx.fem.form(integral)), op=MPI.SUM
-        )
-    )
+    return np.sqrt(assemble_scalar(integral, op=MPI.SUM))
 
 
-def H1(f: ufl.core.expr.Expr, dx: ufl.Measure):
+def H1(f: ufl.core.expr.Expr, dx: ufl.Measure) -> float:
     integral = ufl.inner(f, f) * dx + ufl.inner(ufl.grad(f), ufl.grad(f)) * dx
-    comm = dx.ufl_domain().ufl_cargo().comm
-    return np.sqrt(
-        comm.allreduce(
-            dolfinx.fem.assemble_scalar(dolfinx.fem.form(integral)), op=MPI.SUM
-        )
-    )
+    return np.sqrt(assemble_scalar(integral, op=MPI.SUM))
 
 
+# -
+
+# +
 L2_error_u = L2(uh - u_ex, dx_3D)
 L2_error_p = L2(ph - p_ex, dx_1D)
 H1_error_u = H1(uh - u_ex, dx_3D)
 H1_error_p = H1(ph - p_ex, dx_1D)
 
-h_vol = omega.comm.allreduce(
-    np.max(
-        omega.h(
-            omega.topology.dim,
-            np.arange(
-                omega.topology.index_map(omega.topology.dim).size_local,
-                dtype=np.int32,
-            ),
-        )
-    ),
-    op=MPI.MAX,
-)
-h_line = lmbda.comm.allreduce(
-    np.max(
-        lmbda.h(
-            lmbda.topology.dim,
-            np.arange(
-                lmbda.topology.index_map(lmbda.topology.dim).size_local,
-                dtype=np.int32,
-            ),
-        )
-    ),
-    op=MPI.MAX,
-)
 if MPI.COMM_WORLD.rank == 0:
     print(f"{degree=:d} {q_degree=:d}")
-    print(f"{h_vol=:.5e}, {h_line=:.5e}")
     print(f"L2-error u: {L2_error_u:.6e}")
     print(f"L2-error p: {L2_error_p:.6e}")
     print(f"H1-error u: {H1_error_u:.6e}")
     print(f"H1-error p: {H1_error_p:.6e}")
+# -
 
-
-## References
+# ## References
 
 # ```{bibliography}
 # :filter: cited

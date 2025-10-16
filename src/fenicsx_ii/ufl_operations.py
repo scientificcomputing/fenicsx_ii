@@ -14,7 +14,12 @@ from ufl.domain import extract_unique_domain
 
 from .restriction_operators import ReductionOperator
 
-__all__ = ["Average", "get_replaced_argument_indices", "apply_replacer"]
+__all__ = [
+    "Average",
+    "get_replaced_argument_indices",
+    "apply_replacer",
+    "DomainReplacer",
+]
 
 
 class AveragedArgument(ufl.Argument):
@@ -177,6 +182,102 @@ class Average(ufl.core.operator.Operator):
             )
 
 
+class OverloadedConstant(dolfinx.fem.Constant):
+    """Constant that is defined on a different mesh."""
+
+    def __init__(self, mesh: dolfinx.mesh.Mesh, const: dolfinx.fem.Constant):
+        ufl.Constant.__init__(self, mesh, const.value.shape)
+        self._cpp_object = const._cpp_object
+
+
+class DomainReplacer(DAGTraverser):
+    """Replace domain in :py:class:`ufl.SpatialCoordinate` and
+    :py:class:`dolfinx.fem.Constant` with a user provided :py:class:`dolfinx.mesh.Mesh`.
+
+    Note:
+        The geometrical dimension of the new mesh must be the same as the original mesh.
+    """
+
+    def __init__(
+        self,
+        new_domain: ufl.Mesh,
+        compress: bool | None = True,
+        visited_cache: dict[tuple, ufl.core.expr.Expr] | None = None,
+        result_cache: dict[ufl.core.expr.Expr, ufl.core.expr.Expr] | None = None,
+    ) -> None:
+        """Initialise.
+
+        Args:
+            compress: If True, ``result_cache`` will be used.
+            visited_cache: cache of intermediate results;
+                expr -> r = self.process(expr, ...).
+            result_cache: cache of result objects for memory reuse, r -> r.
+
+        """
+        self._new_domain = new_domain
+        super().__init__(
+            compress=compress, visited_cache=visited_cache, result_cache=result_cache
+        )
+
+    @singledispatchmethod
+    def process(
+        self,
+        o: ufl.core.expr.Expr,
+    ) -> ufl.core.expr.Expr:
+        """Replace constants defined on a different mesh.
+
+        Args:
+            o: `ufl.core.expr.Expr` to be processed.
+        """
+        return super().process(o)
+
+    @process.register(dolfinx.fem.Constant)
+    def _(
+        self,
+        o: dolfinx.fem.Constant,
+    ) -> ufl.core.expr.Expr:
+        """Handle Constant."""
+        if self._new_domain == o.ufl_domain():
+            return o
+        else:
+            if (
+                self._new_domain.geometric_dimension()
+                != o.ufl_domain().geometric_dimension()
+            ):
+                raise ValueError(
+                    "Cannot domain in SpatialCoordinate to a mesh with "
+                    + "a different geometrical dimension"
+                )
+            return OverloadedConstant(self._new_domain, o)
+
+    @process.register(ufl.SpatialCoordinate)
+    def _(
+        self,
+        o: ufl.SpatialCoordinate,
+    ) -> ufl.core.expr.Expr:
+        """Handle SpatialCoordinate."""
+        if self._new_domain == o.ufl_domain():
+            return o
+        else:
+            if (
+                self._new_domain.geometric_dimension()
+                != o.ufl_domain().geometric_dimension()
+            ):
+                raise ValueError(
+                    "Cannot domain in SpatialCoordinate to a mesh with"
+                    + " a different geometrical dimension"
+                )
+            return ufl.SpatialCoordinate(self._new_domain)
+
+    @process.register(ufl.core.expr.Expr)
+    def _(
+        self,
+        o: ufl.Argument,
+    ) -> ufl.core.expr.Expr:
+        """Handle anything else in UFL."""
+        return self.reuse_if_untouched(o)
+
+
 class AverageReplacer(DAGTraverser):
     """DAGTraverser to replaced averaged arguments with an argument in an
     intermediate space."""
@@ -283,9 +384,15 @@ def apply_replacer(form: ufl.Form) -> list[ufl.Form]:
     rule = AverageReplacer()
     mapped_integrals: list[ufl.Integral] = []
     for itg in form.integrals():
-        new_itg = map_integrands(rule, itg)
-        new_domain = extract_unique_domain(new_itg.integrand())
         old_domain = itg.ufl_domain()
+        new_itg = map_integrands(rule, itg)
+        try:
+            new_domain = extract_unique_domain(new_itg.integrand())
+        except ValueError:
+            new_domain = new_itg.ufl_domain()
+            new_itg = map_integrands(DomainReplacer(new_domain), new_itg)
+            new_domain = extract_unique_domain(new_itg.integrand())
+
         if new_domain != old_domain:
             new_itg = new_itg.reconstruct(domain=new_domain)
         if not isinstance(itg.integrand(), ufl.operators.Zero):
