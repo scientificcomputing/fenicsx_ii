@@ -1,7 +1,7 @@
 # Book settings
 # Learn more at https://jupyterbook.org/customize/config.html
 
-title: scifem
+title: fenicsx_ii
 author: Jørgen S. Dokken
 copyright: "2025"
 only_build_toc_files: true

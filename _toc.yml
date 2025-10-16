@@ -5,6 +5,10 @@ format: jb-book
 root: README
 parts:
 
+  - caption: Examples
+    chapters:
+      - file: "demos/coupled_poisson_solver"
+
   - caption: Reference
     chapters:
       - file: "docs/api.rst"
