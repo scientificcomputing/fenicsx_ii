@@ -185,7 +185,7 @@ class Average(ufl.core.operator.Operator):
 class OverloadedConstant(dolfinx.fem.Constant):
     """Constant that is defined on a different mesh."""
 
-    def __init__(self, mesh: dolfinx.mesh.Mesh, const: dolfinx.fem.Constant):
+    def __init__(self, mesh: ufl.Mesh, const: dolfinx.fem.Constant):
         ufl.Constant.__init__(self, mesh, const.value.shape)
         self._cpp_object = const._cpp_object
 
