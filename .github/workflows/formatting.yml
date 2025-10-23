@@ -19,8 +19,7 @@ jobs:
   check-code:
     runs-on: ubuntu-latest
 
-    container: ghcr.io/fenics/dolfinx/dolfinx:nightly
-
+    container: ghcr.io/fenics/dolfinx/dolfinx:v0.10.0
     steps:
       # This action sets the current path to the root of your github repo
       - uses: actions/checkout@v5
@@ -32,6 +31,6 @@ jobs:
         run: |
           ruff check .
           ruff format --check .
-      
+
       - name: Mypy check
         run: python3 -m mypy .

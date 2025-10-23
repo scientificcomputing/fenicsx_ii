@@ -19,8 +19,8 @@ jobs:
       fail-fast: false
       matrix:
         label: [
-        #   "stable",
-          "nightly"
+          "v0.10.0",
+        #  "nightly"
         ]
     env:
       PUBLISH_DIR: ./_build/html
