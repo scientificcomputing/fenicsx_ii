@@ -43,7 +43,7 @@ jobs:
       - name: Download docs artifact
         uses: actions/download-artifact@v5
         with:
-          name: nightly-docs
+          name: stable-docs
           path: "./public"
 
       - name: Upload page artifact
