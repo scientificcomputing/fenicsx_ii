@@ -8,9 +8,8 @@ on:
 
 env:
   DEB_PYTHON_INSTALL_LAYOUT: deb_system
- 
-jobs:
 
+jobs:
   build:
     name: Test on ${{ matrix.label }}
     runs-on: ubuntu-24.04
@@ -18,10 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        label: [
-          "v0.10.0",
-        #  "nightly"
-        ]
+        label: ["stable", "nightly"]
     env:
       PUBLISH_DIR: ./_build/html
       PYVISTA_OFF_SCREEN: false
