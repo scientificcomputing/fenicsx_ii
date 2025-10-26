@@ -9,7 +9,7 @@ which becomes a central part of the variational formulation.
 See for instance
 [D'Angelo & Quarteroni, 2008](https://doi.org/10.1142/S0218202508003108) {cite}`intro-dangelo20083d1d`,
 [Kutcha 2021](https://doi.org/10.1007/978-3-030-55874-1_63) {cite}`intro-kutcha2021trace` or
-[Masri, Kutcha & Riviere, 2024](https://doi.org/10.1137/23M1627390) {cite}`intro-masri2024coupled3d1d`.
+[Masri, Kuchta & Riviere, 2024](https://doi.org/10.1137/23M1627390) {cite}`intro-masri2024coupled3d1d`.
 
 The restrictions implemented in {py:mod}`fenicsx_ii` is:
 - {py:class}`PointwiseTrace<fenicsx_ii.PointwiseTrace>`, the operator: $\Pi(u)(\hat x)=u(\hat x)$, $\hat x \in \Gamma$ .
