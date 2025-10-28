@@ -240,12 +240,19 @@ class DomainReplacer(DAGTraverser):
         if self._new_domain == o.ufl_domain():
             return o
         else:
-            if (
-                self._new_domain.geometric_dimension()
-                != o.ufl_domain().geometric_dimension()
-            ):
+            try:
+                same_gdim = (
+                    self._new_domain.geometric_dimension()
+                    == o.ufl_domain().geometric_dimension()
+                )
+            except TypeError:
+                same_gdim = (
+                    self._new_domain.geometric_dimension
+                    == o.ufl_domain().geometric_dimension
+                )
+            if not same_gdim:
                 raise ValueError(
-                    "Cannot domain in SpatialCoordinate to a mesh with "
+                    "Cannot change domain in Constant to a mesh with "
                     + "a different geometrical dimension"
                 )
             return OverloadedConstant(self._new_domain, o)
@@ -259,12 +266,19 @@ class DomainReplacer(DAGTraverser):
         if self._new_domain == o.ufl_domain():
             return o
         else:
-            if (
-                self._new_domain.geometric_dimension()
-                != o.ufl_domain().geometric_dimension()
-            ):
+            try:
+                same_gdim = (
+                    self._new_domain.geometric_dimension()
+                    == o.ufl_domain().geometric_dimension()
+                )
+            except TypeError:
+                same_gdim = (
+                    self._new_domain.geometric_dimension
+                    == o.ufl_domain().geometric_dimension
+                )
+            if not same_gdim:
                 raise ValueError(
-                    "Cannot domain in SpatialCoordinate to a mesh with"
+                    "Cannot change domain in SpatialCoordinate to a mesh with"
                     + " a different geometrical dimension"
                 )
             return ufl.SpatialCoordinate(self._new_domain)
