@@ -14,7 +14,7 @@ dependencies = ["fenics-dolfinx>=0.10.0"]
 [project.optional-dependencies]
 test = ["pytest", "sympy"]
 dev = ["pdbpp", "ipython", "mypy", "ruff"]
-docs = ["jupyter-book", "jupytext", "sphinx-codeautolink"]
+docs = ["jupyter-book<2.0", "jupytext", "sphinx-codeautolink"]
 jupyter = ["trame_jupyter_extension", "trame", "pyvista[all]>=0.45.0"]
 all = [
     "fenicsx_ii[test]",
