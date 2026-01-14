@@ -57,8 +57,8 @@ mesh1 = dolfinx.mesh.create_rectangle(
 # as a general mapping restriction, using the {py:class}`fenicsx_ii.ReductionOperator`
 # protocol, where we have to implement a mapping that takes a set of reference points
 # in $\mathbb{R}^2$ and a set of cells in $\Omega_1$ and computes the mapping
-# $T(F(x_{ref}))$ where $F$ is the push forward operation from $K_{ref}$ (reference element)
-# to $K$ (element in physical space) and $T$ the mapping operator.
+# $T(F(x_{ref}))$ where $F$ is the push forward operation from $K_{ref}$
+# (reference element) to $K$ (element in physical space) and $T$ the mapping operator.
 
 
 class MappedRestriction:
