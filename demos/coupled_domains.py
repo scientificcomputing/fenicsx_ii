@@ -136,7 +136,7 @@ Q1 = dolfinx.fem.functionspace(mesh1, quadrature)
 u0_on_omega1 = Average(u_0, restriction, Q1)
 
 # where we have used an intermediate space $Q1$ to accurately capture $u_0$.
-# Finally, we can assemble the integral and compare it with the exact solution@
+# Finally, we can assemble the integral and compare it with the exact solution
 
 # +
 dx1 = ufl.Measure("dx", domain=mesh1)
