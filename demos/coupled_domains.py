@@ -101,6 +101,7 @@ class MappedRestriction:
 # Next we specify the actual translation operator from $\Omega_1$ to $\Omega_0$ and
 # create the restriction operator.
 
+
 # +
 def translate_1_to_0(x):
     x_out = x.copy()
