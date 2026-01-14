@@ -157,5 +157,5 @@ error = np.sqrt(assemble_scalar(L2_error))
 print(f"L2 error {error:.5e}")
 
 tol = 200 * np.finfo(mesh1.geometry.x.dtype).eps
-np.testing.assert_allclose(error, 0, atol=tol, rtol=tol)
+assert np.isclose(error, 0.0, atol=tol, rtol=tol)
 # -
