@@ -54,7 +54,7 @@ def evaluate_basis_function(
         # Expression is evaluated for every point in every cell, which means that we
         # need to discard values that are not on the diagonal.
         assert ref_x.shape[0] == len(cells)
-        num_batches = len(cells) // batch_size + 1
+        num_batches = len(cells) // batch_size + ((len(cells) % batch_size) > 0)
         for b in range(num_batches):
             x_batch = ref_x[b * batch_size : (b + 1) * batch_size]
             cell_batch = cells[b * batch_size : (b + 1) * batch_size]

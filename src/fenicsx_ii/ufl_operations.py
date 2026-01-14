@@ -133,7 +133,9 @@ class Average(ufl.core.operator.Operator):
 
     __slots__ = ("_u", "_restriction_operator", "_restriction_space")
 
-    def __init__(self, u: ufl.Argument, restriction_operator, restriction_space):
+    def __init__(
+        self, u: ufl.Argument | ufl.Coefficient, restriction_operator, restriction_space
+    ):
         """Create a custom operator."""
         if not (isinstance(u, ufl.Argument) or isinstance(u, ufl.Coefficient)):
             raise TypeError(

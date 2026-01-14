@@ -47,8 +47,13 @@ def create_interpolation_matrix(
     )
     quad_points = quadrature_rule.points
 
-    interpolation_coordinates = quad_points.reshape(-1, mesh_to.geometry.dim)
-    assert mesh_to.geometry.dim == 3
+    # Pad interpolation coordinates for 3D
+    _interpolation_coordinates = quad_points.reshape(-1, mesh_to.geometry.dim)
+    interpolation_coordinates = np.zeros(
+        (_interpolation_coordinates.shape[0], 3), dtype=_interpolation_coordinates.dtype
+    )
+    interpolation_coordinates[:, : mesh_to.geometry.dim] = _interpolation_coordinates
+    del _interpolation_coordinates
 
     num_average_qp = red_op.num_points
 

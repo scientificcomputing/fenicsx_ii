@@ -8,6 +8,7 @@ parts:
   - caption: Examples
     chapters:
       - file: "demos/coupled_poisson_solver"
+      - file: "demos/coupled_domains"
 
   - caption: Reference
     chapters:
