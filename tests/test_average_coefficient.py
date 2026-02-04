@@ -68,8 +68,10 @@ def test_trace_average_coefficient():
     interior_ridges = dolfinx.mesh.locate_entities(
         domain,
         domain.topology.dim - 2,
-        lambda x: np.isclose(x[0], c_min + (c_max - c_min) / 2)
-        & np.isclose(x[1], c_min + (c_max - c_min) / 2),
+        lambda x: (
+            np.isclose(x[0], c_min + (c_max - c_min) / 2)
+            & np.isclose(x[1], c_min + (c_max - c_min) / 2)
+        ),
     )
 
     ridge_integral_entities = []
