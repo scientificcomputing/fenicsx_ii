@@ -6,7 +6,7 @@
 # The following example shows how to couple two non-overlapping meshes using FEniCSx_ii.
 
 # This example will consider two domains, $\Omega_0=[0,1]\times[0,1]$ and
-# $\Omega_1=[4, 3]\times[5,3]$.
+# $\Omega_1=[4, 3]\times[5,4]$.
 # We will compute the following integral
 #
 # $$
@@ -15,7 +15,7 @@
 # \end{align}
 # $$
 #
-# where $\mathbf{x_1}\in \Omega_1$, and $T(\mathbf{x_1}): \Omega_1\mapsto \Omega_0$
+# where $\mathbf{x_1}\in \Omega_1$, and $T: \Omega_1\mapsto \Omega_0$
 # through a translation.
 #
 # First we start by importing the necessary modules:
