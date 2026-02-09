@@ -101,7 +101,7 @@ lmbda = dolfinx.mesh.create_mesh(
 # \end{align}
 # $$
 #
-# with the variational formulation
+# where $\xi > 0$ is the permeability constant, with the variational formulation
 #
 # $$
 # \begin{align*}
