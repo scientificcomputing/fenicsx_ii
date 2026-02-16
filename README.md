@@ -26,6 +26,19 @@ Several (non-local) operators are implemented in {py:mod}`fenicsx_ii`:
 
 Any other operator can be implemented by following the {py:class}`ReductionOperator<fenicsx_ii.ReductionOperator>`-protocol.
 
+## Installation
+
+Users are encouraged to install `fenicsx_ii` with `pip` in an environment where `dolfinx` is already installed.
+
+### `pip`
+To install the package with `pip` run
+
+```bash
+python3 -m pip install fenicsx_ii --no-build-isolation
+```
+
+Note that you should pass the flag `--no-build-isolation` to `pip` to avoid issues with the build environment, such as incompatible versions of `nanobind`.
+
 ## Funding
 
 The development of FEniCSx_ii has been funded by the Wellcome Trust,

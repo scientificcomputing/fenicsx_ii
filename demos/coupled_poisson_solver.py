@@ -109,14 +109,14 @@ lmbda = dolfinx.mesh.create_mesh(
 # \end{align}
 # $$
 #
-# with the variational formulation
+# where $\xi > 0$ is the permeability constant, with the variational formulation
 #
 # $$
 # \begin{align*}
 #   \int_\Omega \alpha_1 \nabla u \cdot \nabla v~\mathrm{d}x
 #   + \int_\Gamma P\xi (\Pi_R(u) - p)\Pi_R(v)~\mathrm{d}s
 #   &= \int_\Omega f\cdot v~\mathrm{d}x\\
-#   \int_\Gamma d_s p \cdot d_s q~\mathrm{d}s
+#   \int_\Gamma A d_s p \cdot d_s q~\mathrm{d}s
 #   + \int_\Gamma P\xi (p - \Pi_R(u))q~\mathrm{d}s
 #   &= \int_\Gamma A\hat f\cdot q~\mathrm{d}s
 # \end{align*}
