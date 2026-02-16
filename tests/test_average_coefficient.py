@@ -39,14 +39,21 @@ def test_trace_average_coefficient():
             "Lagrange", basix.CellType.interval, 1, shape=(nodes.shape[1],)
         )
     )
+    import inspect
+
+    sig = inspect.signature(dolfinx.mesh.create_cell_partitioner)
+    kwargs = {}
+    if "max_facet_to_cell_links" in list(sig.parameters.keys()):
+        kwargs["max_facet_to_cell_links"] = 2
     line_mesh = dolfinx.mesh.create_mesh(
         MPI.COMM_WORLD,
         x=nodes,
         cells=connectivity,
         e=c_el,
         partitioner=dolfinx.mesh.create_cell_partitioner(
-            dolfinx.mesh.GhostMode.shared_facet
+            dolfinx.mesh.GhostMode.shared_facet, **kwargs
         ),
+        **kwargs,
     )
 
     V = dolfinx.fem.functionspace(domain, ("Lagrange", 2, ()))
@@ -131,14 +138,21 @@ def test_circle_average_coefficient():
             "Lagrange", basix.CellType.interval, 1, shape=(nodes.shape[1],)
         )
     )
+    import inspect
+
+    sig = inspect.signature(dolfinx.mesh.create_cell_partitioner)
+    kwargs = {}
+    if "max_facet_to_cell_links" in list(sig.parameters.keys()):
+        kwargs["max_facet_to_cell_links"] = 2
     line_mesh = dolfinx.mesh.create_mesh(
         MPI.COMM_WORLD,
         x=nodes,
         cells=connectivity,
         e=c_el,
         partitioner=dolfinx.mesh.create_cell_partitioner(
-            dolfinx.mesh.GhostMode.shared_facet
+            dolfinx.mesh.GhostMode.shared_facet, **kwargs
         ),
+        **kwargs,
     )
 
     V = dolfinx.fem.functionspace(domain, ("Lagrange", 2, ()))
