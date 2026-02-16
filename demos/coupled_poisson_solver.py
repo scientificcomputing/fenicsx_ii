@@ -26,6 +26,8 @@
 # We start by defining a cube that spans $[-0.5,-0.5,-0.5]\times[0.5,0.5,0.5]$
 
 # +
+import inspect
+
 from mpi4py import MPI
 
 import basix.ufl
@@ -73,14 +75,20 @@ else:
 c_el = ufl.Mesh(
     basix.ufl.element("Lagrange", basix.CellType.interval, 1, shape=(nodes.shape[1],))
 )
+
+sig = inspect.signature(dolfinx.mesh.create_cell_partitioner)
+kwargs = {}
+if "max_facet_to_cell_links" in list(sig.parameters.keys()):
+    kwargs["max_facet_to_cell_links"] = 2
 lmbda = dolfinx.mesh.create_mesh(
     comm,
     x=nodes,
     cells=connectivity,
     e=c_el,
     partitioner=dolfinx.mesh.create_cell_partitioner(
-        dolfinx.mesh.GhostMode.shared_facet
+        dolfinx.mesh.GhostMode.shared_facet, **kwargs
     ),
+    **kwargs,
 )
 # -
 
