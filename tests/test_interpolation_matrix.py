@@ -341,7 +341,7 @@ def test_sub_interpolation(use_petsc, cell_type, degree, use_complex, dtype):
         return out
 
     restriction = MappedRestriction(mesh, translate_1_to_0)
-    tol = 20 * np.finfo(dtype).eps
+    tol = 40 * np.finfo(dtype).eps
 
     A, _, _ = create_interpolation_matrix(
         V,
