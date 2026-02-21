@@ -21,18 +21,15 @@
 # First we start by importing the necessary modules:
 
 # +
-from typing import Callable
 
 from mpi4py import MPI
 
 import basix.ufl
 import dolfinx
 import numpy as np
-import numpy.typing as npt
 import ufl
 
-from fenicsx_ii import Average, assemble_scalar
-from fenicsx_ii.quadrature import Quadrature
+from fenicsx_ii import Average, MappedRestriction, assemble_scalar
 
 # -
 
@@ -55,51 +52,11 @@ mesh1 = dolfinx.mesh.create_rectangle(
 
 # Furthermore, we implement the translation-restriction from $\Omega_1$ to $\Omega_0$
 # as a general mapping restriction, using the {py:class}`fenicsx_ii.ReductionOperator`
-# protocol, where we have to implement a mapping that takes a set of reference points
-# in $\mathbb{R}^2$ and a set of cells in $\Omega_1$ and computes the mapping
-# $T(F(x_{ref}))$ where $F$ is the push forward operation from $K_{ref}$
-# (reference element) to $K$ (element in physical space) and $T$ the mapping operator.
-
-
-class MappedRestriction:
-    quadrature_degree: int
-
-    def __init__(
-        self,
-        mesh,
-        operator: Callable[[npt.NDArray[np.floating]], npt.NDArray[np.floating]],
-    ):
-        self._mesh = mesh
-        self._operator = operator
-
-    def compute_quadrature(
-        self, cells: npt.NDArray[np.int32], reference_points: npt.NDArray[np.floating]
-    ) -> Quadrature:
-        phys_points = np.zeros(
-            (len(cells) * reference_points.shape[0], self._mesh.geometry.dim)
-        )
-        x_geom = self._mesh.geometry.x[
-            self._mesh.geometry.dofmap[cells], : self._mesh.geometry.dim
-        ]
-        for i, x_i in enumerate(x_geom):
-            phys_points[
-                i * reference_points.shape[0] : (i + 1) * reference_points.shape[0], :
-            ] = self._mesh.geometry.cmap.push_forward(reference_points, x_i)
-        translated_points = self._operator(phys_points.T).T
-        return Quadrature(
-            name="Translation",
-            points=translated_points,
-            weights=np.ones((phys_points.shape[0], 1)),
-            scales=np.ones(phys_points.shape[0]),
-        )
-
-    @property
-    def num_points(self) -> int:
-        return 1
-
-
-# Next we specify the actual translation operator from $\Omega_1$ to $\Omega_0$ and
-# create the restriction operator.
+# protocol, we use the {py:class}`fenicsx_ii.MappedRestriction` that takes
+#  set of reference points in $\mathbb{R}^2$ and a set of cells in
+# $\Omega_1$ and computes the mapping $T(F(x_{ref}))$ where $F$ is the push
+# forward operation from $K_{ref}$ (reference element) to $K$ (element in
+# physical space) and $T$ the mapping operator.
 
 
 # +

@@ -2,6 +2,7 @@ import inspect
 import itertools
 
 from mpi4py import MPI
+from petsc4py import PETSc
 
 import basix.ufl
 import dolfinx
@@ -9,7 +10,12 @@ import numpy as np
 import pytest
 import ufl
 
-from fenicsx_ii import Circle, PointwiseTrace, create_interpolation_matrix
+from fenicsx_ii import (
+    Circle,
+    MappedRestriction,
+    PointwiseTrace,
+    create_interpolation_matrix,
+)
 
 # Only run ghost mode parametrization in parallel
 if MPI.COMM_WORLD.size == 1:
@@ -293,3 +299,99 @@ def test_naive_trace_vector(use_petsc, family, degree, curved_line, unit_cube):
     bh_ref = dolfinx.fem.Function(K_hat)
     bh_ref.interpolate(f)
     np.testing.assert_allclose(bh.x.array, bh_ref.x.array)
+
+
+@pytest.mark.parametrize("use_petsc", [True, False])
+@pytest.mark.parametrize(
+    "cell_type", [dolfinx.mesh.CellType.quadrilateral, dolfinx.mesh.CellType.triangle]
+)
+@pytest.mark.parametrize("degree", [1, 3])
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+@pytest.mark.parametrize("use_complex", [True, False])
+def test_sub_interpolation(use_petsc, cell_type, degree, use_complex, dtype):
+    mesh = dolfinx.mesh.create_unit_square(
+        MPI.COMM_WORLD, 10, 10, cell_type=cell_type, dtype=dtype
+    )
+    if dtype == np.float32 and cell_type == dolfinx.mesh.CellType.quadrilateral:
+        pytest.xfail("Problems with tolerance in pullback in DOLFINx")
+
+    stype = np.result_type(dtype, 1j) if use_complex else dtype
+    if stype != PETSc.ScalarType and use_petsc:
+        pytest.skip("PETSc must be compiled with correct dtype")
+    el = basix.ufl.element("Lagrange", mesh.basix_cell(), degree, dtype=dtype)
+    V = dolfinx.fem.functionspace(mesh, el)
+
+    def upper(x):
+        return x[1] >= 0.5
+
+    upper_cells = dolfinx.mesh.locate_entities(mesh, mesh.topology.dim, upper)
+
+    translation_vector = np.array([0, 0.5])
+
+    def translate_1_to_0(x):
+        x_out = x.copy()
+        for i, ti in enumerate(translation_vector):
+            x_out[i] -= ti
+        return x_out
+
+    def f(x):
+        out = (np.sin(2 * np.pi * x[1]) + x[0]).astype(stype)
+        if use_complex:
+            out += 1j * (np.cos(4 * np.pi * x[1]) - x[0])
+        return out
+
+    restriction = MappedRestriction(mesh, translate_1_to_0)
+    tol = 20 * np.finfo(dtype).eps
+
+    A, _, _ = create_interpolation_matrix(
+        V,
+        V,
+        restriction,
+        use_petsc=use_petsc,
+        cells_K=upper_cells,
+        tol=tol,
+        complex_dtype=use_complex,
+    )
+
+    cell_map = mesh.topology.index_map(mesh.topology.dim)
+    num_cells_local = cell_map.size_local + cell_map.num_ghosts
+    cell_markers = np.full(num_cells_local, 1)
+    cell_markers[upper_cells] = 2
+    lower_cells = np.flatnonzero(cell_markers == 1)
+
+    uh = dolfinx.fem.Function(V, name="u_lower", dtype=stype)
+    uh.interpolate(f, cells0=lower_cells)
+    uh.x.scatter_forward()
+    bh = dolfinx.fem.Function(V, name="u_interpolated", dtype=stype)
+    if use_petsc:
+        A.mult(uh.x.petsc_vec, bh.x.petsc_vec)
+    else:
+        # NOTE: Implicit assumption in DOLFINx that the dofs map of input vector
+        # is the same as the once used within the matrix
+
+        # Transfer from standard function to compatible vector
+        num_owned_dofs = A.index_map(1).size_local * A.block_size[1]
+        u_vec = dolfinx.la.vector(A.index_map(1), A.block_size[1], dtype=stype)
+        u_vec.array[:num_owned_dofs] = uh.x.array[:num_owned_dofs]
+        u_vec.scatter_forward()
+        b_vec = dolfinx.la.vector(A.index_map(0), A.block_size[0], dtype=stype)
+        A.mult(u_vec, b_vec)
+        b_vec.scatter_forward()
+        # Transfer back to DOLFINx vector
+        num_owned_dofs_b = A.index_map(0).size_local * A.block_size[0]
+        bh.x.array[:num_owned_dofs_b] = b_vec.array[:num_owned_dofs_b]
+    bh.x.scatter_forward()
+
+    with dolfinx.io.VTXWriter(mesh.comm, "uh.bp", [uh, bh]) as bp:
+        bp.write(0.0)
+
+    def f_mapped(x):
+        x_mapped = x.copy()
+        for i, ti in enumerate(translation_vector):
+            x_mapped[i] -= ti
+        return f(x_mapped)
+
+    bh_ex = dolfinx.fem.Function(V, dtype=stype)
+    bh_ex.interpolate(f_mapped, cells0=upper_cells)
+    bh_ex.x.scatter_forward()
+    np.testing.assert_allclose(bh.x.array, bh_ex.x.array, atol=tol)
