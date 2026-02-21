@@ -58,7 +58,9 @@ def evaluate_basis_function(
         for b in range(num_batches):
             x_batch = ref_x[b * batch_size : (b + 1) * batch_size]
             cell_batch = cells[b * batch_size : (b + 1) * batch_size]
-            expr = dolfinx.fem.Expression(u, x_batch, comm=_MPI.COMM_SELF)
+            expr = dolfinx.fem.Expression(
+                u, x_batch, comm=_MPI.COMM_SELF, dtype=mesh.geometry.x.dtype
+            )
             all_values = expr.eval(mesh, cell_batch)
             if bs > 1:
                 basis_values[b * batch_size : (b + 1) * batch_size, :, :] = np.swapaxes(

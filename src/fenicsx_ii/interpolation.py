@@ -4,6 +4,7 @@ from mpi4py import MPI as _MPI
 
 import dolfinx
 import numpy as np
+import numpy.typing as npt
 from dolfinx.common import IndexMap as _im
 
 from .interpolation_utils import create_extended_indexmap, evaluate_basis_function
@@ -17,6 +18,8 @@ def create_interpolation_matrix(
     red_op: ReductionOperator,
     tol: float = 1.0e-8,
     use_petsc: bool = False,
+    cells_K: npt.NDArray[np.int32] | None = None,
+    complex_dtype: bool = False,
 ) -> tuple["PETSc.Mat" | dolfinx.la.MatrixCSR, _im, _im]:  # type: ignore[name-defined] # noqa: F821
     """
     Create an interpolation matrix from `V` to `K` with a specific reduction operator
@@ -28,6 +31,7 @@ def create_interpolation_matrix(
         red_op: Reduction operator for each interpolation point on `K`.
         tol: Tolerance for determining point ownership across processes.
         use_petsc: Flag to indicate whether to use PETSc for the matrix.
+        complex_dtype: Create a matrix with complex dtype
 
     Returns:
         The interpolation matrix, as a DOLFINx built in matrix or a PETSc matrix.
@@ -36,15 +40,17 @@ def create_interpolation_matrix(
     """
     mesh_to = K.mesh
     mesh_from = V.mesh
-    num_line_cells = mesh_to.topology.index_map(mesh_to.topology.dim).size_local
     reference_interpolation_points = K.element.interpolation_points
 
     num_ip_per_cell = reference_interpolation_points.shape[0]
-    line_cells = np.arange(num_line_cells, dtype=np.int32)
 
-    quadrature_rule = red_op.compute_quadrature(
-        line_cells, reference_interpolation_points
-    )
+    if cells_K is None:
+        num_cells_K = mesh_to.topology.index_map(mesh_to.topology.dim).size_local
+        cells_K = np.arange(num_cells_K, dtype=np.int32)
+    else:
+        num_cells_K = len(cells_K)
+
+    quadrature_rule = red_op.compute_quadrature(cells_K, reference_interpolation_points)
     quad_points = quadrature_rule.points
 
     # Pad interpolation coordinates for 3D
@@ -77,7 +83,7 @@ def create_interpolation_matrix(
         K,
         ip_owner,
         ip_sender,
-        np.repeat(np.arange(num_line_cells), num_ip_per_cell * num_average_qp),
+        np.repeat(cells_K, num_ip_per_cell * num_average_qp),
     )
     # Create extended index map
     new_imap_K = create_extended_indexmap(
@@ -141,8 +147,8 @@ def create_interpolation_matrix(
 
     assert K.element.interpolation_ident
     assert not K.element.needs_dof_transformations
-    for i in range(num_line_cells):
-        local_k_dofs = K.dofmap.list[i]
+    for i, cell_K in enumerate(cells_K):
+        local_k_dofs = K.dofmap.list[cell_K]
         local_v_dofs = new_local_V_dofs[
             V_in_Q_order[
                 num_dofs_per_cell_K * num_average_qp * i : num_dofs_per_cell_K
@@ -166,6 +172,13 @@ def create_interpolation_matrix(
         )
         from petsc4py import PETSc
 
+        if (
+            np.issubdtype(PETSc.ScalarType, np.complexfloating) != complex_dtype  # type: ignore
+        ):
+            raise RuntimeError(
+                "PETSc has been compiled with dtype {PETSc.ScalarType}, ",
+                "requested complex={complex_dtype}.",
+            )
         A = dolfinx.cpp.la.petsc.create_matrix(K.mesh.comm, sp)
 
         def insert_function(A, rows, columns, values):
@@ -174,10 +187,13 @@ def create_interpolation_matrix(
         def finalize(A):
             A.assemble()
     else:
+        dtype = np.dtype(V.element.dtype)
+        if complex_dtype:
+            dtype = np.result_type(dtype, 1j)
         A = dolfinx.la.matrix_csr(
             sp,
             block_mode=dolfinx.la.BlockMode.compact,
-            dtype=dolfinx.default_scalar_type,
+            dtype=dtype,
         )
 
         def insert_function(A, rows, columns, values):
@@ -197,9 +213,9 @@ def create_interpolation_matrix(
     )
     K_bs = K.dofmap.bs
     dofs_visited[K.dofmap.index_map.size_local * K.dofmap.index_map_bs :] = True
-    padded_K_dm = unroll_dofmap(K.dofmap.list, K_bs)
+    padded_K_dm = unroll_dofmap(K.dofmap.list[cells_K], K_bs)
     local_visit = np.full(num_average_qp * K_bs, False, dtype=np.bool_)
-    for i in range(num_line_cells):
+    for i in range(num_cells_K):
         local_k_dofs = padded_K_dm[i]
         V_slice = V_in_Q_order[
             num_average_qp * num_dofs_per_cell_K * i : num_average_qp

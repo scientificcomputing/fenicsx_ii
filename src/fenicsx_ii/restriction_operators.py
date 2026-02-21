@@ -308,3 +308,49 @@ class Disk:
         weights = np.tile(self._w, x0.shape[0])
         weights *= tiled_scale
         return xp, weights.reshape(x0.shape[0], -1), scale
+
+
+class MappedRestriction:
+    """
+    A restriction mapping a point in space to another through
+    the operation `x_new=operator(x)`.
+
+    Args:
+        mesh: The mesh to restrict data to
+        operator: The mapping operator, written on a vectorized fashion,
+            such that x[0] is a set of x-coordinates, x[1] y-coordinates etc.
+
+    """
+
+    def __init__(
+        self,
+        mesh,
+        operator: typing.Callable[[npt.NDArray[np.floating]], npt.NDArray[np.floating]],
+    ):
+        self._mesh = mesh
+        self._operator = operator
+
+    def compute_quadrature(
+        self, cells: npt.NDArray[np.int32], reference_points: npt.NDArray[np.floating]
+    ) -> Quadrature:
+        phys_points = np.zeros(
+            (len(cells) * reference_points.shape[0], self._mesh.geometry.dim)
+        )
+        x_geom = self._mesh.geometry.x[
+            self._mesh.geometry.dofmap[cells], : self._mesh.geometry.dim
+        ]
+        for i, x_i in enumerate(x_geom):
+            phys_points[
+                i * reference_points.shape[0] : (i + 1) * reference_points.shape[0], :
+            ] = self._mesh.geometry.cmap.push_forward(reference_points, x_i)
+        translated_points = self._operator(phys_points.T).T
+        return Quadrature(
+            name="Translation",
+            points=translated_points,
+            weights=np.ones((phys_points.shape[0], 1)),
+            scales=np.ones(phys_points.shape[0]),
+        )
+
+    @property
+    def num_points(self) -> int:
+        return 1
