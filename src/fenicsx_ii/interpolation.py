@@ -173,9 +173,7 @@ def create_interpolation_matrix(
         from petsc4py import PETSc
 
         if (
-            not np.issubdtype(PETSc.ScalarType, np.complexfloating) and complex_dtype  # type: ignore
-        ) or (
-            np.issubdtype(PETSc.ScalarType, np.complexfloating) and not complex_dtype  # type: ignore
+            np.issubdtype(PETSc.ScalarType, np.complexfloating) != complex_dtype  # type: ignore
         ):
             raise RuntimeError(
                 "PETSc has been compiled with dtype {PETSc.ScalarType}, ",
