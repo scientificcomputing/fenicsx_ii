@@ -382,9 +382,6 @@ def test_sub_interpolation(use_petsc, cell_type, degree, use_complex, dtype):
         bh.x.array[:num_owned_dofs_b] = b_vec.array[:num_owned_dofs_b]
     bh.x.scatter_forward()
 
-    with dolfinx.io.VTXWriter(mesh.comm, "uh.bp", [uh, bh]) as bp:
-        bp.write(0.0)
-
     def f_mapped(x):
         x_mapped = x.copy()
         for i, ti in enumerate(translation_vector):
