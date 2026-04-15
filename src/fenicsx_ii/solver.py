@@ -170,13 +170,13 @@ class LinearProblem:
             opts.prefixPush(self.solver.getOptionsPrefix())
 
             for k, v in petsc_options.items():
-                opts[k] = v
+                opts.setValue(k, v)
 
             self.solver.setFromOptions()
 
             # Tidy up global options
             for k in petsc_options.keys():
-                del opts[k]
+                opts.delValue(k)
 
             opts.prefixPop()
 
@@ -252,30 +252,30 @@ class LinearProblem:
         self.solver.solve(self.b, self.x)
         dolfinx.la.petsc._ghost_update(
             self.x,
-            PETSc.InsertMode.INSERT,  # type: ignore[attr-defined]
-            PETSc.ScatterMode.FORWARD,  # type: ignore[attr-defined]
+            PETSc.InsertMode.INSERT,  # type: ignore[arg-type]
+            PETSc.ScatterMode.FORWARD,  # type: ignore[arg-type]
         )
 
-        dolfinx.fem.petsc.assign(self.x, self._u)
+        dolfinx.fem.petsc.assign(self.x, self._u)  # type: ignore[arg-type]
         return self.u
 
     @property
-    def A(self) -> PETSc.Mat:  # type: ignore[name-defined]
+    def A(self) -> PETSc.Mat:
         """Left-hand side matrix."""
         return self._A
 
     @property
-    def P_mat(self) -> PETSc.Mat:  # type: ignore[name-defined]
+    def P_mat(self) -> PETSc.Mat | None:
         """Preconditioner matrix."""
         return self._P_mat
 
     @property
-    def b(self) -> PETSc.Vec:  # type: ignore[name-defined]
+    def b(self) -> PETSc.Vec:
         """Right-hand side vector."""
         return self._b
 
     @property
-    def x(self) -> PETSc.Vec:  # type: ignore[name-defined]
+    def x(self) -> PETSc.Vec:
         """Solution vector.
 
         Note:
@@ -285,7 +285,7 @@ class LinearProblem:
         return self._x
 
     @property
-    def solver(self) -> PETSc.KSP:  # type: ignore[name-defined]
+    def solver(self) -> PETSc.KSP:
         """The PETSc KSP solver."""
         return self._solver
 

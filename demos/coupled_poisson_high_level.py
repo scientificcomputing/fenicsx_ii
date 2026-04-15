@@ -135,7 +135,7 @@ ksp.destroy()
 
 uh = dolfinx.fem.Function(V)
 ph = dolfinx.fem.Function(Q)
-dolfinx.fem.petsc.assign(u_vec, [uh, ph])
+dolfinx.fem.petsc.assign(u_vec, [uh, ph])  # type: ignore[arg-type]
 ph.x.scatter_forward()
 uh.x.scatter_forward()
 uh.name = "u_3D"
