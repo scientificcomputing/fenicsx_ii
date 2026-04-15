@@ -58,8 +58,8 @@ def assemble_vector(
             if bc.function_space == space:
                 dolfinx.fem.petsc.set_bc(b, [bc])
         b.ghostUpdate(
-            addv=PETSc.InsertMode.INSERT_VALUES,  # type: ignore[attr-defined]
-            mode=PETSc.ScatterMode.FORWARD,  # type: ignore[attr-defined]
+            addv=PETSc.InsertMode.INSERT_VALUES,  # type: ignore[arg-type]
+            mode=PETSc.ScatterMode.FORWARD,  # type: ignore[arg-type]
         )
         return b
     else:
@@ -81,8 +81,8 @@ def assemble_vector(
                     if bc.function_space == space:
                         dolfinx.fem.petsc.set_bc(_vecs[i], [bc])
                 _vecs[i].ghostUpdate(
-                    addv=PETSc.InsertMode.INSERT_VALUES,  # type: ignore[attr-defined]
-                    mode=PETSc.ScatterMode.FORWARD,  # type: ignore[attr-defined]
+                    addv=PETSc.InsertMode.INSERT_VALUES,  # type: ignore[arg-type]
+                    mode=PETSc.ScatterMode.FORWARD,  # type: ignore[arg-type]
                 )
         [vec.destroy() for vec in _vecs]
         return b
@@ -120,10 +120,10 @@ def assemble_vector_and_apply_restriction(
 
 def apply_vector_replacer(
     form: ufl.Form,  # type: ignore[name-defined]
-    get_vector: typing.Callable[[ufl.Form], PETSc.Vec],  # type: ignore[name-defined]
-    post_assembly: typing.Callable[[PETSc.Vec], None],  # type: ignore[name-defined]
-    vec: PETSc.Vec | None = None,  # type: ignore[name-defined]
-) -> PETSc.Vec:  # type: ignore[name-defined]
+    get_vector: typing.Callable[[ufl.Form], PETSc.Vec],
+    post_assembly: typing.Callable[[PETSc.Vec], None],
+    vec: PETSc.Vec | None = None,
+) -> PETSc.Vec:
     """Given a linear form, replace all averaged coefficients and arguments
     by the corresponding :py:class:`fenicsx_ii.AveragedCoefficient` and
     :py:class:`fenicsx_ii.AveragedArgument` and assemble the resulting
@@ -183,6 +183,7 @@ def apply_vector_replacer(
                 raise ValueError(
                     f"Unexpected replacement indices {replacement_indices}"
                 )
+    assert isinstance(vec, PETSc.Vec)
     return vec
 
 
@@ -240,7 +241,7 @@ def create_vector(
     else:
         linear_form = ufl.extract_blocks(L)
         num_spaces = len(linear_form)
-        b = [None for _ in range(num_spaces)]
+        b: list[PETSc.Vec | None] = [None for _ in range(num_spaces)]
         for i in range(num_spaces):
             if linear_form[i] is not None:
                 b[i] = create_subvector(

@@ -206,6 +206,7 @@ def apply_matrix_replacer(
                     trial_arg.restriction_operator,
                     use_petsc=True,
                 )
+                assert isinstance(K, PETSc.Mat)
                 D = A.matMult(K)
                 trial_space = trial_arg.parent_space
                 test_space = test_arg.ufl_function_space()
@@ -259,6 +260,7 @@ def apply_matrix_replacer(
                 raise ValueError(
                     f"Unexpected replacement indices {replacement_indices}"
                 )
+    assert isinstance(matrix, PETSc.Mat)
     return matrix
 
 
@@ -318,7 +320,9 @@ def create_matrix(
     else:
         bilinear_form = ufl.extract_blocks(a)
         num_spaces = len(bilinear_form)
-        A = [[None for _ in range(num_spaces)] for _ in range(num_spaces)]
+        A: list[list[PETSc.Mat | None]] = [
+            [None for _ in range(num_spaces)] for _ in range(num_spaces)
+        ]
         for i in range(num_spaces):
             for j in range(num_spaces):
                 if bilinear_form[i][j] is not None:
