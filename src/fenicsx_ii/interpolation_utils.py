@@ -5,6 +5,8 @@ import numpy as np
 import numpy.typing as npt
 import ufl
 
+from .compat import get_cmap
+
 
 def evaluate_basis_function(
     V: dolfinx.fem.FunctionSpace,
@@ -28,7 +30,7 @@ def evaluate_basis_function(
     # Pull owning points back to reference cell
     mesh = V.mesh
     mesh_nodes = mesh.geometry.x
-    cmap = mesh.geometry.cmap
+    cmap = get_cmap(mesh)
 
     ref_x = np.zeros((len(cells), mesh.topology.dim), dtype=mesh.geometry.x.dtype)
     for i, (point, cell) in enumerate(zip(points, cells)):

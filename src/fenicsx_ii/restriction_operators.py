@@ -7,6 +7,7 @@ import dolfinx
 import numpy as np
 import numpy.typing as npt
 
+from .compat import get_cmap
 from .quadrature import Quadrature, compute_disk_quadrature, rotation_matrix
 from .utils import get_cell_normals, get_physical_points
 
@@ -94,13 +95,14 @@ class Circle:
         | typing.Callable[[npt.NDArray[np.floating]], npt.NDArray[np.floating]],
         degree: int = 15,
     ):
+        cmap = get_cmap(mesh)
         if degree < 3:
             raise ValueError(
                 "Degree must be bigger than 3 for a sensible approximation"
             )
         if mesh.topology.dim != 1:
             raise ValueError("Circle quadrature can only be used on 1D meshes")
-        if mesh.geometry.cmap.degree > 1:
+        if cmap.degree > 1:
             raise NotImplementedError("Not implemented for curved meshes")
 
         self._mesh = mesh
@@ -141,7 +143,8 @@ class Circle:
     def compute_quadrature(
         self, cells: npt.NDArray[np.int32], reference_points: npt.NDArray[np.floating]
     ) -> Quadrature:
-        if self._mesh.geometry.cmap.degree > 1:
+        cmap = get_cmap(self._mesh)
+        if cmap.degree > 1:
             raise NotImplementedError("Non-affine lines not supported yet")
         x_coords = get_physical_points(self._mesh, cells, reference_points)
         cell_normals = get_cell_normals(self._mesh, cells)
@@ -225,7 +228,8 @@ class Disk:
     ):
         if mesh.topology.dim != 1:
             raise ValueError("Circle quadrature can only be used on 1D meshes")
-        if mesh.geometry.cmap.degree > 1:
+        cmap = get_cmap(mesh)
+        if cmap.degree > 1:
             raise NotImplementedError("Not implemented for curved meshes")
 
         self._mesh = mesh
@@ -252,7 +256,8 @@ class Disk:
     def compute_quadrature(
         self, cells: npt.NDArray[np.int32], reference_points: npt.NDArray[np.floating]
     ) -> Quadrature:
-        if self._mesh.geometry.cmap.degree > 1:
+        cmap = get_cmap(self._mesh)
+        if cmap.degree > 1:
             raise NotImplementedError("Non-affine lines not supported yet")
         x_coords = get_physical_points(self._mesh, cells, reference_points)
 
@@ -339,10 +344,11 @@ class MappedRestriction:
         x_geom = self._mesh.geometry.x[
             self._mesh.geometry.dofmap[cells], : self._mesh.geometry.dim
         ]
+        cmap = get_cmap(self._mesh)
         for i, x_i in enumerate(x_geom):
             phys_points[
                 i * reference_points.shape[0] : (i + 1) * reference_points.shape[0], :
-            ] = self._mesh.geometry.cmap.push_forward(reference_points, x_i)
+            ] = cmap.push_forward(reference_points, x_i)
         translated_points = self._operator(phys_points.T).T
         return Quadrature(
             name="Translation",
