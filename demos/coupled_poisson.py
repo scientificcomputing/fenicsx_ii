@@ -108,6 +108,7 @@ R = 0.2
 # Create restriction operator for trial space
 restriction_trial = Circle(line_mesh, R, degree=5)
 T, imap_K, imap_V = create_interpolation_matrix(V, W, restriction_trial, use_petsc=True)
+assert isinstance(T, PETSc.Mat)
 C = A10.matMult(T)
 assign_LG_map(
     C, Q.dofmap.index_map, imap_V, Q.dofmap.index_map_bs, V.dofmap.index_map_bs

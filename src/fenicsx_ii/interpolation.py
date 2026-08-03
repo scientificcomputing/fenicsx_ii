@@ -165,7 +165,7 @@ def create_interpolation_matrix(
     # Create distributed petsc matrix and insert basis function values
     weights = quadrature_rule.weights
     scales = quadrature_rule.scales
-
+    A: "PETSc.Mat" | dolfinx.la.MatrixCSR  # type: ignore[name-defined]
     if use_petsc:
         assert dolfinx.has_petsc, (
             "DOLFINx has to be installed with PETSc support to use PETSc matrices"

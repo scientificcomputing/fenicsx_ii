@@ -56,7 +56,7 @@ def assemble_matrix(
         for bc in bcs:
             if bc.function_space == spaces[0]:
                 dofs, lz = bc._cpp_object.dof_indices()
-                A.zeroRowsLocal(dofs[:lz], diag=on_diagonal)
+                A.zeroRowsLocal(dofs[:lz].tolist(), diag=on_diagonal)
         return A
     else:
         bilinear_form = ufl.extract_blocks(a)
@@ -81,7 +81,7 @@ def assemble_matrix(
                     for bc in bcs:
                         if bc.function_space == spaces[0]:
                             dofs, lz = bc._cpp_object.dof_indices()
-                            Aij.zeroRowsLocal(dofs[:lz], diag=on_diagonal)
+                            Aij.zeroRowsLocal(dofs[:lz].tolist(), diag=on_diagonal)
         return A  # type: ignore
 
 
