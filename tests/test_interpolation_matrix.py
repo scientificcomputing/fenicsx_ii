@@ -73,7 +73,7 @@ def create_line(
     max_facet_to_cell_links = 2
     if "max_facet_to_cell_links" in list(sig.parameters.keys()):
         part = dolfinx.mesh.create_cell_partitioner(
-            mode=ghost_mode, max_facet_to_cell_links=max_facet_to_cell_links
+            ghost_mode, max_facet_to_cell_links=max_facet_to_cell_links
         )
     else:
         part = dolfinx.mesh.create_cell_partitioner(mode=ghost_mode)  # type: ignore
