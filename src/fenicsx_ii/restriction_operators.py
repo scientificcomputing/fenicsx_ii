@@ -343,9 +343,7 @@ class MappedRestriction:
         )
         if hasattr(self._mesh.geometry, "dofmaps"):
             if len(self._mesh.geometry.dofmaps) > 1:
-                raise RuntimeError(
-                    "Mesh has more than one geometry dofmap, cannot determine which to use."
-                )
+                raise NotImplementedError("Mesh has more than one geometry dofmap.")
             geom_dm = self._mesh.geometry.dofmaps[0]
         else:
             geom_dm = self._mesh.geometry.dofmap

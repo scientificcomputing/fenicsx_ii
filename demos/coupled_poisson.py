@@ -183,8 +183,8 @@ bcs: list[dolfinx.fem.DirichletBC] = [
 ]
 for bc in bcs:
     dofs, lz = bc._cpp_object.dof_indices()
-    C.zeroRowsLocal(dofs, diag=0)
-    A11.zeroRowsLocal(dofs, diag=1)
+    C.zeroRowsLocal(dofs.tolist(), diag=0)
+    A11.zeroRowsLocal(dofs.tolist(), diag=1)
 
 A_block = PETSc.Mat().createNest([[A00, D], [C, A11]])  # type: ignore
 

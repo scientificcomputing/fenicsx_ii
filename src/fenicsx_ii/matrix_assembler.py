@@ -54,7 +54,15 @@ def assemble_matrix(
         spaces = [arg.ufl_function_space()._cpp_object for arg in a.arguments()]
         on_diagonal = float(spaces[0] == spaces[1])
         for bc in bcs:
-            if bc.function_space == spaces[0]:
+            # Workaround to be backwards compatible post
+            # https://github.com/FEniCS/dolfinx/pull/4342
+            bc_space = bc.function_space
+            bc_cpp_space = (
+                bc_space._cpp_object
+                if isinstance(bc_space, dolfinx.fem.FunctionSpace)
+                else bc_space
+            )
+            if bc_cpp_space == spaces[0]:
                 dofs, lz = bc._cpp_object.dof_indices()
                 A.zeroRowsLocal(dofs[:lz].tolist(), diag=on_diagonal)
         return A
@@ -79,7 +87,15 @@ def assemble_matrix(
                     ]
                     on_diagonal = float(spaces[0] == spaces[1])
                     for bc in bcs:
-                        if bc.function_space == spaces[0]:
+                        # Workaround to be backwards compatible post
+                        # https://github.com/FEniCS/dolfinx/pull/4342
+                        bc_space = bc.function_space
+                        bc_cpp_space = (
+                            bc_space._cpp_object
+                            if isinstance(bc_space, dolfinx.fem.FunctionSpace)
+                            else bc_space
+                        )
+                        if bc_cpp_space == spaces[0]:
                             dofs, lz = bc._cpp_object.dof_indices()
                             Aij.zeroRowsLocal(dofs[:lz].tolist(), diag=on_diagonal)
         return A  # type: ignore

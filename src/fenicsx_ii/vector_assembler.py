@@ -55,7 +55,15 @@ def assemble_vector(
         )
         space = L.arguments()[0].ufl_function_space()._cpp_object
         for bc in bcs:
-            if bc.function_space == space:
+            # Workaround to be backwards compatible post
+            # https://github.com/FEniCS/dolfinx/pull/4342
+            bc_space = bc.function_space
+            bc_cpp_space = (
+                bc_space._cpp_object
+                if isinstance(bc_space, dolfinx.fem.FunctionSpace)
+                else bc_space
+            )
+            if bc_cpp_space == space:
                 dolfinx.fem.petsc.set_bc(b, [bc])
         b.ghostUpdate(
             addv=PETSc.InsertMode.INSERT_VALUES,  # type: ignore[arg-type]
@@ -78,7 +86,15 @@ def assemble_vector(
                 )
                 space = linear_form[i].arguments()[0].ufl_function_space()._cpp_object
                 for bc in bcs:
-                    if bc.function_space == space:
+                    # Workaround to be backwards compatible post
+                    # https://github.com/FEniCS/dolfinx/pull/4342
+                    bc_space = bc.function_space
+                    bc_cpp_space = (
+                        bc_space._cpp_object
+                        if isinstance(bc_space, dolfinx.fem.FunctionSpace)
+                        else bc_space
+                    )
+                    if bc_cpp_space == space:
                         dolfinx.fem.petsc.set_bc(_vecs[i], [bc])
                 _vecs[i].ghostUpdate(
                     addv=PETSc.InsertMode.INSERT_VALUES,  # type: ignore[arg-type]
