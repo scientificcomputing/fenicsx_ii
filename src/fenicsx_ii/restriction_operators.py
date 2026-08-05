@@ -341,9 +341,13 @@ class MappedRestriction:
         phys_points = np.zeros(
             (len(cells) * reference_points.shape[0], self._mesh.geometry.dim)
         )
-        x_geom = self._mesh.geometry.x[
-            self._mesh.geometry.dofmap[cells], : self._mesh.geometry.dim
-        ]
+        if hasattr(self._mesh.geometry, "dofmaps"):
+            if len(self._mesh.geometry.dofmaps) > 1:
+                raise NotImplementedError("Mesh has more than one geometry dofmap.")
+            geom_dm = self._mesh.geometry.dofmaps[0]
+        else:
+            geom_dm = self._mesh.geometry.dofmap
+        x_geom = self._mesh.geometry.x[geom_dm[cells], : self._mesh.geometry.dim]
         cmap = get_cmap(self._mesh)
         for i, x_i in enumerate(x_geom):
             phys_points[

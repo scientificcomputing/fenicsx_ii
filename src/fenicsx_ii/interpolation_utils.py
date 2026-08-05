@@ -33,9 +33,18 @@ def evaluate_basis_function(
     cmap = get_cmap(mesh)
 
     ref_x = np.zeros((len(cells), mesh.topology.dim), dtype=mesh.geometry.x.dtype)
+    if hasattr(mesh.geometry, "dofmaps"):
+        geom_dm = mesh.geometry.dofmaps[0]
+    else:
+        geom_dm = mesh.geometry.dofmap
+    kwargs = {}
+    if hasattr(cmap, "pull_back_working_size"):
+        kwargs["working_array"] = np.zeros(
+            cmap.pull_back_working_size(3), dtype=mesh_nodes.dtype
+        )
     for i, (point, cell) in enumerate(zip(points, cells)):
-        geom_dofs = mesh.geometry.dofmap[cell]
-        ref_x[i] = cmap.pull_back(point.reshape(-1, 3), mesh_nodes[geom_dofs])
+        geom_dofs = geom_dm[cell]
+        ref_x[i] = cmap.pull_back(point.reshape(-1, 3), mesh_nodes[geom_dofs], **kwargs)  # type: ignore[arg-type]
 
     # Create expression evaluating a trial function (i.e. just the basis function)
     u = ufl.TestFunction(V)
