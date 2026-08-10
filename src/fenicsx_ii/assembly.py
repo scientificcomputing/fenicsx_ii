@@ -64,6 +64,7 @@ def average_coefficients(form: ufl.Form):
                 res_op,
                 use_petsc=True,
             )
+            assert isinstance(K, PETSc.Mat)
             K.mult(u.x.petsc_vec, coeff.x.petsc_vec)
         coeff.x.scatter_forward()
 
