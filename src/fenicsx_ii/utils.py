@@ -81,7 +81,9 @@ def send_dofs_to_other_process(
     # We also send who owns the global dofs
     line_sends_to, send_counts_K = np.unique(recv_processes, return_counts=True)
     volume_recv_from, recv_counts_K = np.unique(dest_processes, return_counts=True)
-    line_to_volume_comm = K.mesh.comm.Create_dist_graph_adjacent(
+    comm = K.mesh.comm
+    assert isinstance(comm, _MPI.Intracomm)
+    line_to_volume_comm = comm.Create_dist_graph_adjacent(
         volume_recv_from.tolist(), line_sends_to.tolist(), reorder=False
     )
 
