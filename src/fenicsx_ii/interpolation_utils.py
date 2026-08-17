@@ -48,9 +48,9 @@ def evaluate_basis_function(
 
     # Create expression evaluating a trial function (i.e. just the basis function)
     u = ufl.TestFunction(V)
-    bs = V.dofmap.bs
-    num_dofs = V.dofmap.dof_layout.num_dofs
-    value_size = np.prod(V.element.basix_element.value_shape)
+    bs = int(V.dofmap.bs)
+    num_dofs = int(V.dofmap.dof_layout.num_dofs)
+    value_size = int(np.prod(V.element.basix_element.value_shape))
     if bs > 1 and value_size > 1:
         raise ValueError(
             f"A function space cant have both {value_size=} and {bs=} bigger than 1."

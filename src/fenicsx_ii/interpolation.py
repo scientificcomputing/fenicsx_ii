@@ -86,8 +86,10 @@ def create_interpolation_matrix(
         np.repeat(cells_K, num_ip_per_cell * num_average_qp),
     )
     # Create extended index map
+    comm = mesh_to.comm
+    assert isinstance(comm, _MPI.Intracomm)
     new_imap_K = create_extended_indexmap(
-        K.mesh.comm,
+        comm,
         K.dofmap.index_map,
         incoming_K_dofs.flatten(),
         incoming_K_owners,
@@ -100,8 +102,10 @@ def create_interpolation_matrix(
     )
 
     # Create extended index map
+    comm_from = mesh_from.comm
+    assert isinstance(comm_from, _MPI.Intracomm)
     new_imap_V = create_extended_indexmap(
-        V.mesh.comm,
+        comm_from,
         V.dofmap.index_map,
         incoming_V_dofs.flatten(),
         incoming_V_owners,
@@ -129,7 +133,7 @@ def create_interpolation_matrix(
     )
     send_message = [basis_values_on_V.flatten(), basis_send_counts, _MPI.DOUBLE]
     recv_message = [recv_basis_functions, basis_recv_counts, _MPI.DOUBLE]
-    volume_to_line_comm = mesh_from.comm.Create_dist_graph_adjacent(
+    volume_to_line_comm = comm_from.Create_dist_graph_adjacent(
         line_recv_from.tolist(), volume_send_to.tolist(), reorder=False
     )
     volume_to_line_comm.Neighbor_alltoallv(send_message, recv_message)
