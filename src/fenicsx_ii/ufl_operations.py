@@ -11,6 +11,7 @@ import ufl
 from ufl.algorithms.map_integrands import map_integrands
 from ufl.corealg.dag_traverser import DAGTraverser
 from ufl.domain import extract_unique_domain
+from ufl.form import BaseForm
 
 from .restriction_operators import ReductionOperator
 
@@ -204,8 +205,9 @@ class DomainReplacer(DAGTraverser):
         self,
         new_domain: ufl.Mesh,
         compress: bool | None = True,
-        visited_cache: dict[tuple, ufl.core.expr.Expr] | None = None,
-        result_cache: dict[ufl.core.expr.Expr, ufl.core.expr.Expr] | None = None,
+        visited_cache: dict[tuple, ufl.core.expr.Expr | BaseForm] | None = None,
+        result_cache: dict[ufl.core.expr.Expr | BaseForm, ufl.core.expr.Expr | BaseForm]
+        | None = None,
     ) -> None:
         """Initialise.
 
@@ -301,8 +303,9 @@ class AverageReplacer(DAGTraverser):
     def __init__(
         self,
         compress: bool | None = True,
-        visited_cache: dict[tuple, ufl.core.expr.Expr] | None = None,
-        result_cache: dict[ufl.core.expr.Expr, ufl.core.expr.Expr] | None = None,
+        visited_cache: dict[tuple, ufl.core.expr.Expr | BaseForm] | None = None,
+        result_cache: dict[ufl.core.expr.Expr | BaseForm, ufl.core.expr.Expr | BaseForm]
+        | None = None,
     ) -> None:
         """Initialise.
 
