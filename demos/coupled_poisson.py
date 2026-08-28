@@ -38,18 +38,23 @@ c_el = ufl.Mesh(
 )
 
 sig = inspect.signature(dolfinx.mesh.create_cell_partitioner)
-kwargs = {}
+max_cell_to_facet_links = 2
 if "max_facet_to_cell_links" in list(sig.parameters.keys()):
-    kwargs["max_facet_to_cell_links"] = 2
+    partitioner = dolfinx.mesh.create_cell_partitioner(
+        dolfinx.mesh.GhostMode.shared_facet,
+        max_facet_to_cell_links=max_cell_to_facet_links,
+    )
+else:
+    partitioner = dolfinx.mesh.create_cell_partitioner(
+        dolfinx.mesh.GhostMode.shared_facet  # type: ignore[call-overload]
+    )
 line_mesh = dolfinx.mesh.create_mesh(
     MPI.COMM_WORLD,
     x=nodes,
     cells=connectivity,
     e=c_el,
-    partitioner=dolfinx.mesh.create_cell_partitioner(
-        dolfinx.mesh.GhostMode.shared_facet, **kwargs
-    ),
-    **kwargs,
+    partitioner=partitioner,
+    max_facet_to_cell_links=max_cell_to_facet_links,
 )
 
 line_mesh.name = "line"
