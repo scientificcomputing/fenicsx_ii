@@ -37,17 +37,22 @@ c_el = ufl.Mesh(
     basix.ufl.element("Lagrange", basix.CellType.interval, 1, shape=(nodes.shape[1],))
 )
 
-sig = inspect.signature(dolfinx.mesh.create_cell_partitioner)
+
 max_cell_to_facet_links = 2
-if "max_facet_to_cell_links" in list(sig.parameters.keys()):
-    partitioner = dolfinx.mesh.create_cell_partitioner(
-        dolfinx.mesh.GhostMode.shared_facet,
-        max_facet_to_cell_links=max_cell_to_facet_links,
-    )
+if hasattr(dolfinx.mesh, "create_cell_partitioner"):
+    sig = inspect.signature(dolfinx.mesh.create_cell_partitioner)
+    if "max_facet_to_cell_links" in list(sig.parameters.keys()):
+        partitioner = dolfinx.mesh.create_cell_partitioner(
+            dolfinx.mesh.GhostMode.shared_facet,
+            max_facet_to_cell_links=max_cell_to_facet_links,
+        )
+    else:
+        partitioner = dolfinx.mesh.create_cell_partitioner(
+            dolfinx.mesh.GhostMode.shared_facet  # type: ignore[call-overload]
+        )
 else:
-    partitioner = dolfinx.mesh.create_cell_partitioner(
-        dolfinx.mesh.GhostMode.shared_facet  # type: ignore[call-overload]
-    )
+    partitioner = dolfinx.graph.partitioner()
+
 line_mesh = dolfinx.mesh.create_mesh(
     MPI.COMM_WORLD,
     x=nodes,
