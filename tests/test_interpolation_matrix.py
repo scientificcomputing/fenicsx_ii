@@ -69,14 +69,20 @@ def create_line(
         )
     )
 
-    sig = inspect.signature(dolfinx.mesh.create_cell_partitioner)
     max_facet_to_cell_links = 2
-    if "max_facet_to_cell_links" in list(sig.parameters.keys()):
-        part = dolfinx.mesh.create_cell_partitioner(
-            ghost_mode, max_facet_to_cell_links=max_facet_to_cell_links
-        )
+    if hasattr(dolfinx.mesh, "create_cell_partitioner"):
+        sig = inspect.signature(dolfinx.mesh.create_cell_partitioner)
+        if "max_facet_to_cell_links" in list(sig.parameters.keys()):
+            part = dolfinx.mesh.create_cell_partitioner(
+                dolfinx.mesh.GhostMode.shared_facet,
+                max_facet_to_cell_links=max_facet_to_cell_links,
+            )
+        else:
+            part = dolfinx.mesh.create_cell_partitioner(
+                mode=dolfinx.mesh.GhostMode.shared_facet
+            )  # type: ignore
     else:
-        part = dolfinx.mesh.create_cell_partitioner(mode=ghost_mode)  # type: ignore
+        part = dolfinx.graph.partitioner()
     line_mesh = dolfinx.mesh.create_mesh(
         MPI.COMM_WORLD,
         x=nodes,
