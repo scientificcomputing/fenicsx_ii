@@ -183,7 +183,7 @@ def create_interpolation_matrix(
                 "PETSc has been compiled with dtype {PETSc.ScalarType}, ",
                 "requested complex={complex_dtype}.",
             )
-        A = dolfinx.cpp.la.petsc.create_matrix(K.mesh.comm, sp)
+        A = dolfinx.cpp.la.petsc.create_matrix(K.mesh.comm, sp, None)
 
         def insert_function(A, rows, columns, values):
             A.setValuesLocal(rows, columns, values, addv=PETSc.InsertMode.ADD)
