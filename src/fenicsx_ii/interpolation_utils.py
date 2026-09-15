@@ -99,11 +99,19 @@ def create_extended_indexmap(
     new_owners = owners[new_ghosts]
     extended_ghosts = np.concatenate([imap.ghosts, potential_new_dofs[new_ghosts]])
     extended_owners = np.concatenate([imap.owners, new_owners])
-
-    return dolfinx.common.IndexMap(
-        comm,
-        imap.size_local,
-        extended_ghosts,
-        extended_owners,
-        tag,
-    )
+    # backward compatibility for index map:
+    if hasattr(dolfinx.common, "index_map"):
+        return dolfinx.common.index_map(
+            comm,
+            imap.size_local,
+            ghosts=(extended_ghosts, extended_owners),
+            tag=tag,
+        )
+    else:
+        return dolfinx.common.IndexMap(
+            comm,  # type: ignore
+            imap.size_local,
+            extended_ghosts,
+            extended_owners,
+            tag,
+        )

@@ -141,11 +141,18 @@ def create_interpolation_matrix(
     volume_to_line_comm.Free()
 
     # Create sparsity pattern for the interpolation matrix
-    sp = dolfinx.cpp.la.SparsityPattern(
-        K.mesh.comm,
-        [new_imap_K, new_imap_V],
-        [K.dofmap.index_map_bs, V.dofmap.index_map_bs],
-    )
+    if hasattr(dolfinx.la, "sparsity_pattern"):
+        sp = dolfinx.la.sparsity_pattern(
+            K.mesh.comm,
+            [new_imap_K, new_imap_V],
+            [K.dofmap.index_map_bs, V.dofmap.index_map_bs],
+        )
+    else:
+        sp = dolfinx.cpp.la.SparsityPattern(  # type: ignore
+            K.mesh.comm,
+            [new_imap_K, new_imap_V],  # type: ignore
+            [K.dofmap.index_map_bs, V.dofmap.index_map_bs],
+        )
     insert_position = np.argsort(ip_sender, stable=True)
     V_in_Q_order = np.argsort(insert_position, stable=True)
 
@@ -183,7 +190,12 @@ def create_interpolation_matrix(
                 "PETSc has been compiled with dtype {PETSc.ScalarType}, ",
                 "requested complex={complex_dtype}.",
             )
-        A = dolfinx.cpp.la.petsc.create_matrix(K.mesh.comm, sp, None)
+
+        if hasattr(sp, "_cpp_object"):
+            sp_cpp = sp._cpp_object
+        else:
+            sp_cpp = sp  # type: ignore
+        A = dolfinx.cpp.la.petsc.create_matrix(K.mesh.comm, sp_cpp, None)
 
         def insert_function(A, rows, columns, values):
             A.setValuesLocal(rows, columns, values, addv=PETSc.InsertMode.ADD)
