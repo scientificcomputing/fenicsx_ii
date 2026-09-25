@@ -16,6 +16,7 @@ from fenicsx_ii import (
     PointwiseTrace,
     create_interpolation_matrix,
 )
+from fenicsx_ii.compat import expression_uses_wrong_cell_info
 
 # Only run ghost mode parametrization in parallel
 if MPI.COMM_WORLD.size == 1:
@@ -456,7 +457,7 @@ _2D = [dolfinx.mesh.CellType.triangle, dolfinx.mesh.CellType.quadrilateral]
     ],
 )
 def test_value_shape_and_mapped_targets(
-    use_petsc, cell_type, element_from, element_to, ghost_mode
+    use_petsc, cell_type, element_from, element_to, ghost_mode, request
 ):
     """Compare against DOLFINx's non-matching interpolation for tensor-valued and
     non-point-evaluation (e.g. Piola-mapped) spaces."""
@@ -486,6 +487,15 @@ def test_value_shape_and_mapped_targets(
 
     V = dolfinx.fem.functionspace(mesh_from, to_element(mesh_from, element_from))
     K = dolfinx.fem.functionspace(mesh_to, to_element(mesh_to, element_to))
+    if V.element.needs_dof_transformations and expression_uses_wrong_cell_info():
+        request.node.add_marker(
+            pytest.mark.xfail(
+                reason="DOLFINx < 0.11 applies the wrong cell's dof transformations "
+                "in Expression.eval on a subset of cells",
+                raises=RuntimeError,
+                strict=True,
+            )
+        )
     uh = dolfinx.fem.Function(V)
     uh.interpolate(_field(V.value_shape))
     uh.x.scatter_forward()
