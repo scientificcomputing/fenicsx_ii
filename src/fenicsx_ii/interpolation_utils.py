@@ -5,7 +5,7 @@ import numpy as np
 import numpy.typing as npt
 import ufl
 
-from .compat import get_cmap
+from .compat import expression_uses_wrong_cell_info, get_cmap
 
 
 def evaluate_basis_function(
@@ -27,6 +27,17 @@ def evaluate_basis_function(
     Returns:
         The evaluated basis functions at the given points.
     """
+    if V.element.needs_dof_transformations and expression_uses_wrong_cell_info():
+        raise RuntimeError(
+            "Cannot evaluate basis functions of "
+            f"{V.element.basix_element.family.name} (which requires dof "
+            f"transformations) with DOLFINx {dolfinx.__version__}. "
+            "In DOLFINx < 0.11, `dolfinx.fem.Expression.eval(mesh, cells)` applies "
+            "the dof transformations of cell `i` to the `i`th entry of `cells` rather "
+            "than of `cells[i]`, which gives wrong basis values. Please upgrade to "
+            "DOLFINx >= 0.11."
+        )
+
     # Pull owning points back to reference cell
     mesh = V.mesh
     mesh_nodes = mesh.geometry.x

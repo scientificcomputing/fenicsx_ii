@@ -25,3 +25,15 @@ def get_cmap(mesh: dolfinx.mesh.Mesh) -> dolfinx.fem.CoordinateElement:
         return mesh.geometry.cmap()
     else:
         return mesh.geometry.cmap
+
+
+def expression_uses_wrong_cell_info() -> bool:
+    """Check if {py:meth}`dolfinx.fem.Expression.eval` applies the dof transformations
+    of the wrong cells.
+
+    In DOLFINx < 0.11, `Expression.eval(mesh, cells)` looks up the cell
+    permutation info with the position of each cell in `cells` rather than the
+    cell index, so the result is only correct if `cells[i] == i`.
+    """
+    major, minor = (int(v) for v in dolfinx.__version__.split(".")[:2])
+    return (major, minor) < (0, 11)
