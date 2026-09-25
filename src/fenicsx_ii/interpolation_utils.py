@@ -73,6 +73,10 @@ def evaluate_basis_function(
                 u, x_batch, comm=_MPI.COMM_SELF, dtype=mesh.geometry.x.dtype
             )
             all_values = expr.eval(mesh, cell_batch)
+            # Flatten (row-major) the value axes of tensor-valued spaces
+            all_values = all_values.reshape(
+                *all_values.shape[:2], -1, all_values.shape[-1]
+            )
             if bs > 1:
                 basis_values[b * batch_size : (b + 1) * batch_size, :, :] = np.swapaxes(
                     np.diagonal(all_values, axis1=0, axis2=1), 0, 2
