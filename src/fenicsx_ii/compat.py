@@ -3,6 +3,15 @@
 import dolfinx
 
 
+def get_cell_permutation_info(mesh: dolfinx.mesh.Mesh):
+    """Compute (if needed) and return the packed cell permutation info."""
+    if hasattr(mesh.topology, "create_cell_permutations"):
+        mesh.topology.create_cell_permutations()
+    else:
+        mesh.topology.create_entity_permutations()  # type: ignore[call-arg]
+    return mesh.topology.get_cell_permutation_info()
+
+
 def get_cmap(mesh: dolfinx.mesh.Mesh) -> dolfinx.fem.CoordinateElement:
     """Get the basix Cmap for the mesh."""
     if hasattr(mesh.geometry, "cmaps"):

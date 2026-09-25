@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from mpi4py import MPI as _MPI
 
+import basix
 import dolfinx
 import numpy as np
 import numpy.typing as npt
+import ufl
 from dolfinx.common import IndexMap as _im
 
+from .compat import get_cell_permutation_info
 from .interpolation_utils import create_extended_indexmap, evaluate_basis_function
 from .restriction_operators import ReductionOperator
 from .utils import send_dofs_to_other_process, unroll_dofmap
@@ -156,21 +159,25 @@ def create_interpolation_matrix(
     insert_position = np.argsort(ip_sender, stable=True)
     V_in_Q_order = np.argsort(insert_position, stable=True)
 
-    assert K.element.interpolation_ident
-    assert not K.element.needs_dof_transformations
+    # Point-evaluation targets: interpolation point `j` is dof `j` (per block).
+    # Otherwise (e.g. Piola-mapped or moment-based elements), each dof of a cell
+    # depends on the source values at all interpolation points of the cell.
+    point_evaluation = (
+        K.element.interpolation_ident and not K.element.needs_dof_transformations
+    )
+    num_points_per_cell = num_ip_per_cell * num_average_qp
     for i, cell_K in enumerate(cells_K):
         local_k_dofs = K.dofmap.list[cell_K]
         local_v_dofs = new_local_V_dofs[
-            V_in_Q_order[
-                num_dofs_per_cell_K * num_average_qp * i : num_dofs_per_cell_K
-                * num_average_qp
-                * (i + 1)
-            ]
+            V_in_Q_order[num_points_per_cell * i : num_points_per_cell * (i + 1)]
         ]
-        for j in range(num_dofs_per_cell_K):
-            for k in range(num_average_qp):
-                ldofs = local_v_dofs[j * num_average_qp + k]
-                sp.insert(local_k_dofs[j : j + 1], ldofs)
+        if point_evaluation:
+            for j in range(num_dofs_per_cell_K):
+                for k in range(num_average_qp):
+                    ldofs = local_v_dofs[j * num_average_qp + k]
+                    sp.insert(local_k_dofs[j : j + 1], ldofs)
+        else:
+            sp.insert(local_k_dofs, np.unique(local_v_dofs))
     sp.finalize()
 
     # Create distributed petsc matrix and insert basis function values
@@ -230,6 +237,23 @@ def create_interpolation_matrix(
     K_bs = K.dofmap.bs
     dofs_visited[K.dofmap.index_map.size_local * K.dofmap.index_map_bs :] = True
     padded_K_dm = unroll_dofmap(K.dofmap.list[cells_K], K_bs)
+    if not point_evaluation:
+        _insert_interpolation_operator_rows(
+            A,
+            insert_function,
+            K,
+            cells_K,
+            padded_K_dm,
+            local_V_dofs=new_local_V_dofs[V_in_Q_order],
+            V_bs=V.dofmap.index_map_bs,
+            V_basis_values=recv_basis_functions[V_in_Q_order],
+            weights=weights,
+            scales=scales,
+            dofs_visited=dofs_visited,
+        )
+        finalize(A)
+        return A, new_imap_K, new_imap_V
+
     local_visit = np.full(num_average_qp * K_bs, False, dtype=np.bool_)
     for i in range(num_cells_K):
         local_k_dofs = padded_K_dm[i]
@@ -265,3 +289,136 @@ def create_interpolation_matrix(
                     dofs_visited[local_k_dofs[j * K_bs + b]] = True
     finalize(A)
     return A, new_imap_K, new_imap_V
+
+
+def _insert_interpolation_operator_rows(
+    A,
+    insert_function,
+    K: dolfinx.fem.FunctionSpace,
+    cells_K: npt.NDArray[np.int32],
+    padded_K_dm: npt.NDArray[np.int32],
+    local_V_dofs: npt.NDArray[np.int32],
+    V_bs: int,
+    V_basis_values: npt.NDArray[np.inexact],
+    weights: npt.NDArray[np.floating],
+    scales: npt.NDArray[np.floating],
+    dofs_visited: npt.NDArray[np.bool_],
+):
+    """Insert the rows of the interpolation matrix for a target space `K` whose
+    dofs are not point evaluations.
+
+    Per target cell, the dofs are computed as in DOLFINx's interpolation,
+    `T M P^-1(v)`, where `v` are the (averaged) source basis values at the
+    interpolation points of `K`, `P^-1` the pull-back of `K`, `M` the basix
+    interpolation matrix and `T` the dof transformation of the cell. The resulting
+    dense `(num_dofs_K, num_source_dofs)` block is inserted in one call.
+
+    Args:
+        A: Matrix to insert into.
+        insert_function: Adds `values` to `A` at `(rows, cols)`, as
+            `insert_function(A, rows, cols, values)`.
+        K: The function space to interpolate to.
+        cells_K: Local target cells.
+        padded_K_dm: Unrolled dofs of `K` for each cell in `cells_K`.
+        local_V_dofs: Source dofs (blocked, local to the extended index map)
+            of the source cell containing each point, ordered by target cell,
+            interpolation point and averaging point.
+        V_bs: Block size of `local_V_dofs`.
+        V_basis_values: Source basis values at each point, shape
+            `(num_points, num_dofs_per_cell_V * V_bs, value_size)`.
+        weights: Averaging weights, shape `(num_cells * num_ip, num_average_qp)`.
+        scales: Averaging scales, shape `(num_cells * num_ip,)`.
+        dofs_visited: Marks unrolled dofs of `K` that must not be inserted
+            (ghosts, or rows already inserted from a neighbouring cell). Updated in
+            place.
+    """
+    element = K.element.basix_element
+    K_bs = K.dofmap.bs
+    X = K.element.interpolation_points
+    num_ip = X.shape[0]
+    num_qp = weights.shape[1]
+    value_size = V_basis_values.shape[2]
+    if value_size != int(np.prod(K.element.value_shape, dtype=int)):
+        raise ValueError(
+            f"Source value size {value_size} does not match target value shape "
+            f"{K.element.value_shape}."
+        )
+    needs_transformation = K.element.needs_dof_transformations
+    needs_pull_back = element.map_type != basix.MapType.identity
+    if K_bs > 1 and (needs_pull_back or needs_transformation):
+        raise NotImplementedError(
+            "Blocked target elements must use an identity map without dof "
+            "transformations."
+        )
+    M = element.interpolation_matrix
+    real_type = K.element.dtype
+    # Basis functions are real valued, also in complex mode
+    V_basis_values = np.real(V_basis_values).astype(real_type, copy=False)
+
+    mesh = K.mesh
+    if needs_pull_back:
+        J_all, detJ_all, K_all = (
+            dolfinx.fem.Expression(op(mesh), X)
+            .eval(mesh, cells_K)
+            .reshape(len(cells_K), num_ip, *op(mesh).ufl_shape)
+            .astype(real_type)
+            for op in (ufl.Jacobian, ufl.JacobianDeterminant, ufl.JacobianInverse)
+        )
+    if needs_transformation:
+        cell_info = get_cell_permutation_info(mesh)
+
+    # Notation, per target cell: interpolation points x_p (p < num_ip), each with
+    # averaging points x_pk, weights w_pk and scale s_p (for a pointwise trace:
+    # x_p0 = x_p, w_p0 = s_p = 1). phi_c is the source basis function of
+    # (unrolled) source dof c.
+    points = np.arange(num_ip)[:, None, None]
+    for i, cell in enumerate(cells_K):
+        point_slice = slice(i * num_ip * num_qp, (i + 1) * num_ip * num_qp)
+        # Columns: the dofs of every source cell containing some x_pk.
+        # `inverse` maps (p, k, local source dof) to its column in `cols`.
+        dofs = unroll_dofmap(local_V_dofs[point_slice], V_bs)
+        cols, inverse = np.unique(dofs, return_inverse=True)
+
+        # Averaged physical values, shape (num_ip, len(cols), value_size):
+        #   F[p, c] = sum_k (w_pk / s_p) phi_c(x_pk),
+        # where phi_c(x_pk) = 0 if c is not a dof of the source cell containing
+        # x_pk. A column repeats over k, so accumulate unbuffered with np.add.at.
+        w = (
+            weights[i * num_ip : (i + 1) * num_ip]
+            / scales[i * num_ip : (i + 1) * num_ip, None]
+        )
+        values = V_basis_values[point_slice].reshape(num_ip, num_qp, -1, value_size)
+        F = np.zeros((num_ip, len(cols), value_size), dtype=real_type)
+        np.add.at(
+            F,
+            (points, inverse.reshape(num_ip, num_qp, -1)),
+            values * w[..., None, None],
+        )
+
+        # Pull back to the reference cell of K with the Jacobian J_p at x_p:
+        #   F[p, c] <- P_p^-1(F[p, c]),
+        # e.g. det(J_p) J_p^-1 F for contravariant Piola, J_p^T F for covariant.
+        if needs_pull_back:
+            F = element.pull_back(F, J_all[i], detJ_all[i], K_all[i])
+
+        # Reference dofs, with M the basix interpolation matrix:
+        #   B[d, c] = sum_{m, p} M[d, m * num_ip + p] F[p, c, m]
+        if K_bs == 1:
+            block = M @ np.transpose(F, (2, 0, 1)).reshape(-1, len(cols))
+        else:
+            # Scalar sub-element: block b interpolates value component b,
+            #   B[d * K_bs + b, c] = sum_p M[d, p] F[p, c, b]
+            block = np.einsum("dp,pcb->dbc", M, F).reshape(-1, len(cols))
+        block = np.ascontiguousarray(block, dtype=real_type)
+        # Map reference dofs to the cell's dofs, B <- T^-T B, with T the dof
+        # transformation of the cell (entity orientations)
+        if needs_transformation:
+            flat_block = block.reshape(-1)
+            K.element.Tt_inv_apply(flat_block, cell_info[cell : cell + 1], len(cols))
+
+        # A[r, c] = B[r, c]; a dof shared with a neighbouring cell gets the same
+        # row from both, so it is inserted once
+        rows = padded_K_dm[i]
+        block[dofs_visited[rows]] = 0
+        insert_function(A, rows, cols, block.reshape(-1))
+        dofs_visited[rows] = True

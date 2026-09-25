@@ -183,7 +183,7 @@ def test_naive_trace(use_petsc, family, degree, curved_line, unit_cube):
 
 
 @pytest.mark.parametrize("use_petsc", [True, False])
-@pytest.mark.parametrize("family", ["P", "DG", "Quadrature"])
+@pytest.mark.parametrize("family", ["P", "DG", "Quadrature", "DG-legendre"])
 @pytest.mark.parametrize("degree", [2, 3])
 @pytest.mark.parametrize("case", [1, 2, 3, 4])
 @pytest.mark.parametrize("radius", [0.53, lambda x: x[2]])
@@ -193,6 +193,14 @@ def test_circle_trace(use_petsc, family, degree, line, box, radius, case):
     if family == "Quadrature":
         el = basix.ufl.quadrature_element(
             line.basix_cell(), value_shape=(), degree=degree
+        )
+    elif family == "DG-legendre":
+        # Not point evaluation: averaged values are combined by moments
+        el = basix.ufl.element(
+            "DG",
+            line.basix_cell(),
+            degree,
+            lagrange_variant=basix.LagrangeVariant.legendre,
         )
     else:
         el = (family, degree)
@@ -402,3 +410,109 @@ def test_sub_interpolation(use_petsc, cell_type, degree, use_complex, dtype):
     bh_ex.interpolate(f_mapped, cells0=upper_cells)
     bh_ex.x.scatter_forward()
     np.testing.assert_allclose(bh.x.array, bh_ex.x.array, atol=tol)
+
+
+def _field(value_shape):
+    """Smooth, non-polynomial field of a given (flattened, row-major) value shape."""
+    components = [
+        lambda x: np.sin(x[0]) + x[1] ** 2,
+        lambda x: x[0] * x[1] - np.cos(x[1]),
+        lambda x: np.exp(x[0]) - x[1],
+        lambda x: x[0] ** 3 + 2 * x[1],
+        lambda x: x[0] - x[1] * x[2],
+        lambda x: np.cos(x[2]) + x[0],
+        lambda x: x[1] + x[2] ** 2,
+        lambda x: x[0] * x[2],
+        lambda x: np.sin(x[1] + x[2]),
+    ]
+    size = int(np.prod(value_shape, dtype=int))
+    return lambda x: np.vstack([components[i](x) for i in range(size)])
+
+
+_2D = [dolfinx.mesh.CellType.triangle, dolfinx.mesh.CellType.quadrilateral]
+
+
+@pytest.mark.parametrize("ghost_mode", ghost_modes)
+@pytest.mark.parametrize("use_petsc", [True, False])
+@pytest.mark.parametrize(
+    "cell_type, element_from, element_to",
+    [
+        # Tensor valued spaces
+        *[(c, ("DG", 1, (2, 2)), ("Lagrange", 1, (2, 2))) for c in _2D],
+        # Piola-mapped targets
+        *[(c, ("Lagrange", 2, (2,)), ("RT", 1)) for c in _2D],
+        *[(c, ("RT", 2), ("RT", 1)) for c in _2D],
+        *[(c, ("N1curl", 2), ("N1curl", 2)) for c in _2D],
+        *[(c, ("RT", 1), ("N1curl", 1)) for c in _2D],
+        (dolfinx.mesh.CellType.triangle, ("DG", 1, (2, 2)), ("Regge", 1)),
+        (dolfinx.mesh.CellType.tetrahedron, ("N1curl", 2), ("N1curl", 2)),
+        (dolfinx.mesh.CellType.tetrahedron, ("Lagrange", 1, (3,)), ("RT", 2)),
+        # Non-identity interpolation of a blocked, identity-mapped target
+        (
+            dolfinx.mesh.CellType.triangle,
+            ("Lagrange", 2, (2,)),
+            ("DG", 1, (2,), "legendre"),
+        ),
+    ],
+)
+def test_value_shape_and_mapped_targets(
+    use_petsc, cell_type, element_from, element_to, ghost_mode
+):
+    """Compare against DOLFINx's non-matching interpolation for tensor-valued and
+    non-point-evaluation (e.g. Piola-mapped) spaces."""
+    comm = MPI.COMM_WORLD
+    if cell_type == dolfinx.mesh.CellType.tetrahedron:
+        mesh_from = dolfinx.mesh.create_unit_cube(
+            comm, 3, 3, 3, cell_type=cell_type, ghost_mode=ghost_mode
+        )
+        mesh_to = dolfinx.mesh.create_unit_cube(
+            comm, 2, 2, 2, cell_type=cell_type, ghost_mode=ghost_mode
+        )
+    else:
+        mesh_from = dolfinx.mesh.create_unit_square(
+            comm, 7, 6, cell_type=cell_type, ghost_mode=ghost_mode
+        )
+        mesh_to = dolfinx.mesh.create_unit_square(
+            comm, 5, 4, cell_type=cell_type, ghost_mode=ghost_mode
+        )
+
+    def to_element(mesh, e):
+        family, degree, *rest = e
+        shape = rest[0] if len(rest) > 0 else None
+        kwargs = {"shape": shape}
+        if len(rest) > 1:
+            kwargs["lagrange_variant"] = getattr(basix.LagrangeVariant, rest[1])
+        return basix.ufl.element(family, mesh.basix_cell(), degree, **kwargs)
+
+    V = dolfinx.fem.functionspace(mesh_from, to_element(mesh_from, element_from))
+    K = dolfinx.fem.functionspace(mesh_to, to_element(mesh_to, element_to))
+    uh = dolfinx.fem.Function(V)
+    uh.interpolate(_field(V.value_shape))
+    uh.x.scatter_forward()
+
+    tol = 1e-6
+    cells = np.arange(
+        mesh_to.topology.index_map(mesh_to.topology.dim).size_local, dtype=np.int32
+    )
+    bh_ref = dolfinx.fem.Function(K)
+    data = dolfinx.fem.create_interpolation_data(K, V, cells, padding=tol)
+    bh_ref.interpolate_nonmatching(uh, cells, data)
+    bh_ref.x.scatter_forward()
+
+    A, _, _ = create_interpolation_matrix(
+        V, K, PointwiseTrace(mesh_to), tol=tol, use_petsc=use_petsc
+    )
+    bh = dolfinx.fem.Function(K)
+    if use_petsc:
+        A.mult(uh.x.petsc_vec, bh.x.petsc_vec)
+    else:
+        num_owned_dofs = A.index_map(1).size_local * A.block_size[1]
+        u_vec = dolfinx.la.vector(A.index_map(1), A.block_size[1])
+        u_vec.array[:num_owned_dofs] = uh.x.array[:num_owned_dofs]
+        u_vec.scatter_forward()
+        b_vec = dolfinx.la.vector(A.index_map(0), A.block_size[0])
+        A.mult(u_vec, b_vec)
+        num_owned_dofs_b = A.index_map(0).size_local * A.block_size[0]
+        bh.x.array[:num_owned_dofs_b] = b_vec.array[:num_owned_dofs_b]
+    bh.x.scatter_forward()
+    np.testing.assert_allclose(bh.x.array, bh_ref.x.array, atol=1e-12)
