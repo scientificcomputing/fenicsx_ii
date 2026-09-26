@@ -5,7 +5,34 @@ import numpy as np
 import numpy.typing as npt
 import ufl
 
-from .compat import expression_uses_wrong_cell_info, get_cmap
+from .compat import expression_uses_wrong_cell_info, get_cmap, get_geom_dofmap
+
+
+def _check_dof_transformations(expr: ufl.core.expr.Expr):
+    """Check if any terminal requires dof transformations.
+
+    Raise if `expr` has an {py:class}`ufl.Argument`
+    or {py:class}`ufl.Coefficient` whose space needs dof
+    transformations, which {py:meth}`dolfinx.fem.Expression.eval`
+    applies for the wrong cells in DOLFINx < 0.11."""
+    if not expression_uses_wrong_cell_info():
+        return
+    terminals = [
+        *ufl.algorithms.extract_arguments(expr),
+        *ufl.algorithms.extract_coefficients(expr),
+    ]
+    for terminal in terminals:
+        element = terminal.ufl_function_space().element
+        if element.needs_dof_transformations:
+            raise RuntimeError(
+                "Cannot evaluate expressions in "
+                f"{element.basix_element.family.name} (which requires dof "
+                f"transformations) with DOLFINx {dolfinx.__version__}. "
+                "In DOLFINx < 0.11, `dolfinx.fem.Expression.eval(mesh, cells)` "
+                "applies the dof transformations of cell `i` to the `i`th entry of "
+                "`cells` rather than of `cells[i]`, which gives wrong values. Please "
+                "upgrade to DOLFINx >= 0.11."
+            )
 
 
 def evaluate_basis_function(

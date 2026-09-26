@@ -27,6 +27,19 @@ def get_cmap(mesh: dolfinx.mesh.Mesh) -> dolfinx.fem.CoordinateElement:
         return mesh.geometry.cmap
 
 
+def get_geom_dofmap(mesh: dolfinx.mesh.Mesh) -> dolfinx.fem.DofMap:
+    """Get the geometry dofmap for the mesh."""
+    if hasattr(mesh.geometry, "dofmaps"):
+        if len(mesh.geometry.dofmaps) > 1:
+            raise RuntimeError(
+                "Mesh has more than one geometry dofmap, cannot determine which to use."
+            )
+        else:
+            return mesh.geometry.dofmaps[0]
+    else:
+        return mesh.geometry.dofmap
+
+
 def expression_uses_wrong_cell_info() -> bool:
     """Check if {py:meth}`dolfinx.fem.Expression.eval` applies the dof transformations
     of the wrong cells.
