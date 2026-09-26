@@ -12,7 +12,7 @@ from dolfinx.common import IndexMap as _im
 from .compat import get_cell_permutation_info
 from .interpolation_utils import create_extended_indexmap, evaluate_basis_function
 from .restriction_operators import ReductionOperator
-from .utils import send_dofs_to_other_process, unroll_dofmap
+from .utils import PointExchange, send_dofs_to_other_process, unroll_dofmap
 
 
 def create_interpolation_matrix(
@@ -121,27 +121,9 @@ def create_interpolation_matrix(
 
     # Evaluate basis functions in 3D space
     basis_values_on_V = evaluate_basis_function(V, points_on_proc, cells_on_proc)
-    second_dimension = max(V.dofmap.bs, np.prod(V.element.basix_element.value_shape))
-    recv_basis_functions = np.empty(
-        (len(ip_sender), basis_values_on_V.shape[1], basis_values_on_V.shape[2]),
-        dtype=basis_values_on_V.dtype,
-    )
-    volume_send_to, send_counts_V = np.unique(ip_owner, return_counts=True)
-    line_recv_from, recv_counts_V = np.unique(ip_sender, return_counts=True)
-    basis_send_counts = (
-        send_counts_V * num_dofs_per_cell_V * V.dofmap.bs * second_dimension
-    )
-    basis_recv_counts = (
-        recv_counts_V * num_dofs_per_cell_V * V.dofmap.bs * second_dimension
-    )
-    send_message = [basis_values_on_V.flatten(), basis_send_counts, _MPI.DOUBLE]
-    recv_message = [recv_basis_functions, basis_recv_counts, _MPI.DOUBLE]
-    volume_to_line_comm = comm_from.Create_dist_graph_adjacent(
-        line_recv_from.tolist(), volume_send_to.tolist(), reorder=False
-    )
-    volume_to_line_comm.Neighbor_alltoallv(send_message, recv_message)
-    # Free communicators post communication
-    volume_to_line_comm.Free()
+    # Basis values at each interpolation point of K, in point order
+    exchange = PointExchange(comm_from, point_ownership)
+    basis_values = exchange.forward(basis_values_on_V)
 
     # Create sparsity pattern for the interpolation matrix
     if hasattr(dolfinx.la, "sparsity_pattern"):
@@ -246,7 +228,7 @@ def create_interpolation_matrix(
             padded_K_dm,
             local_V_dofs=new_local_V_dofs[V_in_Q_order],
             V_bs=V.dofmap.index_map_bs,
-            V_basis_values=recv_basis_functions[V_in_Q_order],
+            V_basis_values=basis_values,
             weights=weights,
             scales=scales,
             dofs_visited=dofs_visited,
@@ -257,13 +239,13 @@ def create_interpolation_matrix(
     local_visit = np.full(num_average_qp * K_bs, False, dtype=np.bool_)
     for i in range(num_cells_K):
         local_k_dofs = padded_K_dm[i]
-        V_slice = V_in_Q_order[
-            num_average_qp * num_dofs_per_cell_K * i : num_average_qp
-            * num_dofs_per_cell_K
-            * (i + 1)
-        ]
+        point_slice = slice(
+            num_average_qp * num_dofs_per_cell_K * i,
+            num_average_qp * num_dofs_per_cell_K * (i + 1),
+        )
+        V_slice = V_in_Q_order[point_slice]
         local_v_dofs = unroll_dofmap(new_local_V_dofs[V_slice], V.dofmap.index_map_bs)
-        local_v_values = recv_basis_functions[V_slice]
+        local_v_values = basis_values[point_slice]
         for j in range(num_dofs_per_cell_K):
             local_dofs = local_v_dofs[j * num_average_qp : (j + 1) * num_average_qp]
             local_values = local_v_values[j * num_average_qp : (j + 1) * num_average_qp]
