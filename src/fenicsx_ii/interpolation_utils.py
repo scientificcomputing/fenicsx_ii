@@ -80,6 +80,7 @@ def evaluate_expression(
     cells: npt.NDArray[np.int32],
     batch_size: int = 200,
     dtype: npt.DTypeLike | None = None,
+    jit_options: dict | None = None,
 ) -> npt.NDArray:
     """Evaluate a UFL expression at physical points in given cells.
 
@@ -97,6 +98,9 @@ def evaluate_expression(
             against evaluation cost and memory.
         dtype: Scalar type of the Expression. Defaults to the dtype of the
             coefficients in `expr`, else the geometry dtype of `mesh`.
+        jit_options: Passed to {py:class}`dolfinx.fem.Expression`. The points are
+            compiled into each kernel, so a caller evaluating at points that change
+            can set a `cache_dir` it cleans up, rather than fill the shared cache.
 
     Returns:
         `expr` at `points[i]` in `cells[i]`, shape `(num_points, *expr.ufl_shape)`,
@@ -127,7 +131,11 @@ def evaluate_expression(
         batch = slice(start, start + batch_size)
         num_batch = len(cells[batch])
         compiled = dolfinx.fem.Expression(
-            expr, ref_x[batch], comm=_MPI.COMM_SELF, dtype=dtype
+            expr,
+            ref_x[batch],
+            comm=_MPI.COMM_SELF,
+            dtype=dtype,
+            jit_options=jit_options,
         )
         all_values = compiled.eval(mesh, cells[batch])
         # Every point was evaluated in every cell of the batch; keep the diagonal
