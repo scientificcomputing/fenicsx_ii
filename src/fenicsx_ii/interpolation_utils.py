@@ -35,6 +35,107 @@ def _check_dof_transformations(expr: ufl.core.expr.Expr):
             )
 
 
+def pull_back(
+    mesh: dolfinx.mesh.Mesh,
+    points: npt.NDArray[np.inexact],
+    cells: npt.NDArray[np.int32],
+) -> npt.NDArray[np.floating]:
+    """Pull physical points back to the reference cell of the cell holding them.
+
+    Args:
+        mesh: The mesh.
+        points: Physical points, shape `(num_points, 3)`. Trimmed to
+            `(num_points, gdim)` if the geometric dimension `gdim < 3`.
+        cells: The cell of each point.
+
+    Returns:
+        Reference coordinates, shape `(num_points, tdim)`.
+    """
+    gdim = mesh.geometry.dim
+    cmap = get_cmap(mesh)
+    geom_dm = get_geom_dofmap(mesh)
+    # The pull-back works in gdim; points and `geometry.x` are padded to 3
+    mesh_nodes = mesh.geometry.x[:, :gdim]
+    points = np.asarray(points, dtype=mesh_nodes.dtype).reshape(len(cells), 3)[:, :gdim]
+    kwargs = {}
+    if hasattr(cmap, "pull_back_working_size"):
+        kwargs["working_array"] = np.zeros(
+            cmap.pull_back_working_size(points.shape[1]), dtype=mesh_nodes.dtype
+        )
+    ref_x = np.zeros((len(cells), mesh.topology.dim), dtype=mesh_nodes.dtype)
+    # One pull-back per cell, over all points in it
+    order = np.argsort(cells, kind="stable")
+    unique_cells, starts = np.unique(cells[order], return_index=True)
+    ends = np.append(starts[1:], len(cells))
+    for cell, start, end in zip(unique_cells, starts, ends):
+        rows = order[start:end]
+        ref_x[rows] = cmap.pull_back(points[rows], mesh_nodes[geom_dm[cell]], **kwargs)  # type: ignore[arg-type]
+    return ref_x
+
+
+def evaluate_expression(
+    expr: ufl.core.expr.Expr,
+    mesh: dolfinx.mesh.Mesh,
+    points: npt.NDArray[np.inexact],
+    cells: npt.NDArray[np.int32],
+    batch_size: int = 200,
+    dtype: npt.DTypeLike | None = None,
+) -> npt.NDArray:
+    """Evaluate a UFL expression at physical points in given cells.
+
+    Each point is pulled back to the reference cell of its cell, and `expr` is
+    evaluated there with a {py:class}`dolfinx.fem.Expression` on `MPI.COMM_SELF`.
+
+    Args:
+        expr: The expression, with no or one {py:class}`ufl.Argument`.
+        mesh: The mesh `expr` lives on.
+        points: Physical points, shape `(num_points, 3)`. Trimmed to
+            `(num_points, gdim)` if the geometric dimension `gdim < 3`.
+        cells: The cell holding each point.
+        batch_size: Points per compiled Expression. Every point in a batch is
+            evaluated in every cell of the batch, so this trades JIT compilations
+            against evaluation cost and memory.
+        dtype: Scalar type of the Expression. Defaults to the dtype of the
+            coefficients in `expr`, else the geometry dtype of `mesh`.
+
+    Returns:
+        `expr` at `points[i]` in `cells[i]`, shape `(num_points, *expr.ufl_shape)`,
+        with a trailing axis over the dofs of the Argument's cell if `expr` has one.
+    """
+    arguments = ufl.algorithms.extract_arguments(expr)
+    if len(arguments) > 1:
+        raise ValueError(
+            f"Expression has {len(arguments)} arguments, at most one is supported."
+        )
+    _check_dof_transformations(expr)
+    if dtype is None:
+        coefficients = ufl.algorithms.extract_coefficients(expr)
+        dtype = np.result_type(
+            mesh.geometry.x.dtype, *(c.x.array.dtype for c in coefficients)
+        )
+
+    cells = np.asarray(cells, dtype=np.int32)
+    shape = tuple(expr.ufl_shape)
+    if len(arguments) == 1:
+        shape += (arguments[0].ufl_function_space().element.space_dimension,)
+    values = np.zeros((len(cells), *shape), dtype=dtype)
+    if len(cells) == 0:
+        return values
+
+    ref_x = pull_back(mesh, points, cells)
+    for start in range(0, len(cells), batch_size):
+        batch = slice(start, start + batch_size)
+        num_batch = len(cells[batch])
+        compiled = dolfinx.fem.Expression(
+            expr, ref_x[batch], comm=_MPI.COMM_SELF, dtype=dtype
+        )
+        all_values = compiled.eval(mesh, cells[batch])
+        # Every point was evaluated in every cell of the batch; keep the diagonal
+        diagonal = np.arange(num_batch)
+        values[batch] = all_values[diagonal, diagonal].reshape(num_batch, *shape)
+    return values
+
+
 def evaluate_basis_function(
     V: dolfinx.fem.FunctionSpace,
     points: npt.NDArray[np.inexact],
@@ -52,78 +153,29 @@ def evaluate_basis_function(
             the memory usage.
 
     Returns:
-        The evaluated basis functions at the given points.
+        The evaluated basis functions at the given points, shape
+        `(num_points, num_dofs_per_cell * bs, max(bs, value_size))`.
     """
-    if V.element.needs_dof_transformations and expression_uses_wrong_cell_info():
-        raise RuntimeError(
-            "Cannot evaluate basis functions of "
-            f"{V.element.basix_element.family.name} (which requires dof "
-            f"transformations) with DOLFINx {dolfinx.__version__}. "
-            "In DOLFINx < 0.11, `dolfinx.fem.Expression.eval(mesh, cells)` applies "
-            "the dof transformations of cell `i` to the `i`th entry of `cells` rather "
-            "than of `cells[i]`, which gives wrong basis values. Please upgrade to "
-            "DOLFINx >= 0.11."
-        )
-
-    # Pull owning points back to reference cell
-    mesh = V.mesh
-    mesh_nodes = mesh.geometry.x
-    cmap = get_cmap(mesh)
-
-    ref_x = np.zeros((len(cells), mesh.topology.dim), dtype=mesh.geometry.x.dtype)
-    if hasattr(mesh.geometry, "dofmaps"):
-        geom_dm = mesh.geometry.dofmaps[0]
-    else:
-        geom_dm = mesh.geometry.dofmap
-    kwargs = {}
-    if hasattr(cmap, "pull_back_working_size"):
-        kwargs["working_array"] = np.zeros(
-            cmap.pull_back_working_size(3), dtype=mesh_nodes.dtype
-        )
-    for i, (point, cell) in enumerate(zip(points, cells)):
-        geom_dofs = geom_dm[cell]
-        ref_x[i] = cmap.pull_back(point.reshape(-1, 3), mesh_nodes[geom_dofs], **kwargs)  # type: ignore[arg-type]
-
-    # Create expression evaluating a trial function (i.e. just the basis function)
-    u = ufl.TestFunction(V)
     bs = int(V.dofmap.bs)
-    num_dofs = int(V.dofmap.dof_layout.num_dofs)
     value_size = int(np.prod(V.element.basix_element.value_shape))
     if bs > 1 and value_size > 1:
         raise ValueError(
             f"A function space cant have both {value_size=} and {bs=} bigger than 1."
         )
-    # Get basis values as (num_cells, num_basis_functions*bs, max(bs, value_size))
-    basis_values = np.zeros(
-        (len(cells), num_dofs * bs, max(bs, value_size)),
-        dtype=dolfinx.default_scalar_type,
+    mesh = V.mesh
+    values = evaluate_expression(
+        ufl.TestFunction(V),
+        mesh,
+        points,
+        cells,
+        batch_size=batch_size,
+        dtype=mesh.geometry.x.dtype,
     )
-    if len(cells) > 0:
-        # NOTE: Expression lives on only this communicator rank
-        # Expression is evaluated for every point in every cell, which means that we
-        # need to discard values that are not on the diagonal.
-        assert ref_x.shape[0] == len(cells)
-        num_batches = len(cells) // batch_size + ((len(cells) % batch_size) > 0)
-        for b in range(num_batches):
-            x_batch = ref_x[b * batch_size : (b + 1) * batch_size]
-            cell_batch = cells[b * batch_size : (b + 1) * batch_size]
-            expr = dolfinx.fem.Expression(
-                u, x_batch, comm=_MPI.COMM_SELF, dtype=mesh.geometry.x.dtype
-            )
-            all_values = expr.eval(mesh, cell_batch)
-            # Flatten (row-major) the value axes of tensor-valued spaces
-            all_values = all_values.reshape(
-                *all_values.shape[:2], -1, all_values.shape[-1]
-            )
-            if bs > 1:
-                basis_values[b * batch_size : (b + 1) * batch_size, :, :] = np.swapaxes(
-                    np.diagonal(all_values, axis1=0, axis2=1), 0, 2
-                )
-            else:
-                basis_values[b * batch_size : (b + 1) * batch_size, :, :] = np.diagonal(
-                    all_values, axis1=0, axis2=1
-                ).T.reshape(-1, basis_values.shape[1], basis_values.shape[2])
-    return basis_values
+    # (num_points, *value_shape, num_dofs * bs) -> (num_points, num_dofs * bs, value)
+    values = values.reshape(
+        len(cells), int(np.prod(values.shape[1:-1])), values.shape[-1]
+    )
+    return np.swapaxes(values, 1, 2).astype(dolfinx.default_scalar_type)
 
 
 def create_extended_indexmap(

@@ -1,6 +1,8 @@
 """Layer for small backward compatibility wrappers for DOLFINx"""
 
 import dolfinx
+import numpy as np
+import numpy.typing as npt
 
 
 def get_cell_permutation_info(mesh: dolfinx.mesh.Mesh):
@@ -27,8 +29,8 @@ def get_cmap(mesh: dolfinx.mesh.Mesh) -> dolfinx.fem.CoordinateElement:
         return mesh.geometry.cmap
 
 
-def get_geom_dofmap(mesh: dolfinx.mesh.Mesh) -> dolfinx.fem.DofMap:
-    """Get the geometry dofmap for the mesh."""
+def get_geom_dofmap(mesh: dolfinx.mesh.Mesh) -> npt.NDArray[np.int32]:
+    """Get the geometry dofmap for the mesh, shape `(num_cells, num_nodes)`."""
     if hasattr(mesh.geometry, "dofmaps"):
         if len(mesh.geometry.dofmaps) > 1:
             raise RuntimeError(

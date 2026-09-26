@@ -1,5 +1,6 @@
 from .assembly import assemble_scalar, average_coefficients
 from .interpolation import create_interpolation_matrix
+from .interpolation_utils import evaluate_expression
 from .matrix_assembler import assemble_matrix, create_matrix
 from .quadrature import Quadrature
 from .restriction_operators import (
@@ -11,6 +12,7 @@ from .restriction_operators import (
 )
 from .solver import LinearProblem
 from .ufl_operations import Average
+from .utils import PointExchange
 from .vector_assembler import assemble_vector, create_vector
 
 __all__ = [
@@ -19,6 +21,8 @@ __all__ = [
     "PointwiseTrace",
     "average_coefficients",
     "create_interpolation_matrix",
+    "evaluate_expression",
+    "PointExchange",
     "Average",
     "LinearProblem",
     "assemble_vector",
