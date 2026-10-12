@@ -17,6 +17,7 @@ from fenicsx_ii import (
     create_interpolation_matrix,
 )
 from fenicsx_ii.compat import expression_uses_wrong_cell_info
+from fenicsx_ii.interpolation_utils import create_extended_indexmap
 
 # Only run ghost mode parametrization in parallel
 if MPI.COMM_WORLD.size == 1:
@@ -526,3 +527,28 @@ def test_value_shape_and_mapped_targets(
         bh.x.array[:num_owned_dofs_b] = b_vec.array[:num_owned_dofs_b]
     bh.x.scatter_forward()
     np.testing.assert_allclose(bh.x.array, bh_ref.x.array, atol=1e-12)
+
+
+def test_extended_indexmap_has_unique_ghosts():
+    """Repeated new dofs are added to the index map once."""
+    comm = MPI.COMM_WORLD
+    mesh = dolfinx.mesh.create_unit_square(comm, 4, 4)
+    V = dolfinx.fem.functionspace(mesh, ("Lagrange", 1))
+    imap = V.dofmap.index_map
+
+    # Request every dof owned by the next process twice
+    other = (comm.rank + 1) % comm.size
+    other_range = comm.allgather(imap.local_range)[other]
+    if other == comm.rank:
+        dofs = np.zeros(0, dtype=np.int64)
+    else:
+        dofs = np.arange(other_range[0], other_range[1], dtype=np.int64)
+    requested = np.repeat(dofs, 2)
+    owners = np.full(requested.size, other, dtype=np.int32)
+
+    extended = create_extended_indexmap(comm, imap, requested, owners, 99)
+    ghosts = extended.ghosts
+    assert len(np.unique(ghosts)) == len(ghosts)
+    assert np.isin(dofs, ghosts).all()
+    np.testing.assert_array_equal(ghosts[: imap.num_ghosts], imap.ghosts)
+    assert extended.size_local == imap.size_local

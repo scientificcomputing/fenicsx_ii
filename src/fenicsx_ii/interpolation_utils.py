@@ -195,11 +195,15 @@ def create_extended_indexmap(
 ) -> dolfinx.common.IndexMap:
     """
     Create an extended index map that includes new dofs and their owners.
+
+    Dofs that are already owned or ghosted by ``imap`` are skipped, and
+    repeated dofs are added once, as an index map requires unique ghosts.
     """
     local_indices = imap.global_to_local(potential_new_dofs)
     new_ghosts = local_indices < 0
-    new_owners = owners[new_ghosts]
-    extended_ghosts = np.concatenate([imap.ghosts, potential_new_dofs[new_ghosts]])
+    new_dofs, first = np.unique(potential_new_dofs[new_ghosts], return_index=True)
+    new_owners = owners[new_ghosts][first]
+    extended_ghosts = np.concatenate([imap.ghosts, new_dofs])
     extended_owners = np.concatenate([imap.owners, new_owners])
     # backward compatibility for index map:
     if hasattr(dolfinx.common, "index_map"):
