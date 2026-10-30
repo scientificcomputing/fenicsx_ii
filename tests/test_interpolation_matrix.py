@@ -431,6 +431,23 @@ def _field(value_shape):
     return lambda x: np.vstack([components[i](x) for i in range(size)])
 
 
+def _linear_field(value_shape):
+    """Affine field of a given (flattened, row-major) value shape."""
+    components = [
+        lambda x: 1 + x[0] + 2 * x[1],
+        lambda x: x[0] - 3 * x[1] + x[2],
+        lambda x: 2 - x[0] + x[2],
+        lambda x: 3 * x[0] + x[1] - 2 * x[2],
+        lambda x: -1 + 2 * x[1] - x[2],
+        lambda x: x[0] + x[1] + x[2],
+        lambda x: 4 * x[0] - x[1],
+        lambda x: 0.5 + x[2],
+        lambda x: x[1] - 2 * x[0],
+    ]
+    size = int(np.prod(value_shape, dtype=int))
+    return lambda x: np.vstack([components[i](x) for i in range(size)])
+
+
 _2D = [dolfinx.mesh.CellType.triangle, dolfinx.mesh.CellType.quadrilateral]
 
 
@@ -497,8 +514,17 @@ def test_value_shape_and_mapped_targets(
                 strict=True,
             )
         )
+    # A dof on an entity shared by several cells of `mesh_to` is computed from one
+    # of them. DOLFINx uses the last cell, while `create_interpolation_matrix`
+    # uses the first. If the dofs are integral moments, the cells only agree
+    # if the quadrature rule is symmetric under the entity's orientations
+    # (not the case for RT(2) on tetrahedra since Basix 0.12, see
+    # https://github.com/FEniCS/basix/issues/1111) or if `uh` is integrated
+    # exactly. For these targets, use a linear field, which is represented
+    # exactly by all but the lowest order H(div)/H(curl) spaces `V`.
+    field = _linear_field if K.element.needs_dof_transformations else _field
     uh = dolfinx.fem.Function(V)
-    uh.interpolate(_field(V.value_shape))
+    uh.interpolate(field(V.value_shape))
     uh.x.scatter_forward()
 
     tol = 1e-6
